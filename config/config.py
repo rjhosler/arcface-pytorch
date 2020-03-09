@@ -12,14 +12,14 @@ class Config(object):
     model_path = "models/{}.pth".format(backbone)
     save_interval = 10
 
-    train_batch_size = 64
+    train_batch_size = 180
     test_batch_size = 64
 
     input_shape = (1, 128, 128)
 
     optimizer = "sgd"
 
-    use_gpu = False
+    use_gpu = True
     gpu_id = "0"
     num_workers = 8
     print_freq = 5
