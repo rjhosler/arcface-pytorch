@@ -3,12 +3,22 @@ from __future__ import division
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import Parameter
+from torch.nn import Parameter, Linear
 import math
 
 
-class ArcMarginProduct(nn.Module):
-    r"""Implement of large margin arc distance: :
+class Softmax(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(Softmax, self).__init__()
+        self.fc = Linear(in_features, out_features)
+
+    def forward(self, input, label):
+        output = self.fc(input)
+        return output
+
+
+class AAML(nn.Module):
+    r"""Implement of additive angular margin loss: :
         Args:
             in_features: size of each input sample
             out_features: size of each output sample
@@ -19,7 +29,7 @@ class ArcMarginProduct(nn.Module):
         """
 
     def __init__(self, in_features, out_features, device, s=30.0, m=0.50):
-        super(ArcMarginProduct, self).__init__()
+        super(AAML, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.device = device
@@ -45,7 +55,7 @@ class ArcMarginProduct(nn.Module):
         return output
 
 
-class AddMarginProduct(nn.Module):
+class LMCL(nn.Module):
     r"""Implement of large margin cosine distance: :
     Args:
         in_features: size of each input sample
@@ -56,7 +66,7 @@ class AddMarginProduct(nn.Module):
     """
 
     def __init__(self, in_features, out_features, device, s=30.0, m=0.40):
-        super(AddMarginProduct, self).__init__()
+        super(LMCL, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.device = device
@@ -77,22 +87,23 @@ class AddMarginProduct(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(' \
-               + 'in_features=' + str(self.in_features) \
-               + ', out_features=' + str(self.out_features) \
-               + ', s=' + str(self.s) \
-               + ', m=' + str(self.m) + ')'
+            + 'in_features=' + str(self.in_features) \
+            + ', out_features=' + str(self.out_features) \
+            + ', s=' + str(self.s) \
+            + ', m=' + str(self.m) + ')'
 
 
-class SphereProduct(nn.Module):
-    r"""Implement of large margin cosine distance: :
+class AMSL(nn.Module):
+    r"""Implement of angular margin softmax loss: :
     Args:
         in_features: size of each input sample
         out_features: size of each output sample
         m: margin
         cos(m*theta)
     """
+
     def __init__(self, in_features, out_features, device, m=4):
-        super(SphereProduct, self).__init__()
+        super(AMSL, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.device = device
@@ -118,7 +129,8 @@ class SphereProduct(nn.Module):
     def forward(self, input, label):
         # lambda = max(lambda_min,base*(1+gamma*iteration)^(-power))
         self.iter += 1
-        self.lamb = max(self.LambdaMin, self.base * (1 + self.gamma * self.iter) ** (-1 * self.power))
+        self.lamb = max(self.LambdaMin, self.base *
+                        (1 + self.gamma * self.iter) ** (-1 * self.power))
 
         # --------------------------- cos(theta) & phi(theta) ---------------------------
         cos_theta = F.linear(F.normalize(input), F.normalize(self.weight))
@@ -135,13 +147,14 @@ class SphereProduct(nn.Module):
         one_hot.scatter_(1, label.view(-1, 1), 1)
 
         # --------------------------- Calculate output ---------------------------
-        output = (one_hot * (phi_theta - cos_theta) / (1 + self.lamb)) + cos_theta
+        output = (one_hot * (phi_theta - cos_theta) /
+                  (1 + self.lamb)) + cos_theta
         output *= NormOfFeature.view(-1, 1)
 
         return output
 
     def __repr__(self):
         return self.__class__.__name__ + '(' \
-               + 'in_features=' + str(self.in_features) \
-               + ', out_features=' + str(self.out_features) \
-               + ', m=' + str(self.m) + ')'
+            + 'in_features=' + str(self.in_features) \
+            + ', out_features=' + str(self.out_features) \
+            + ', m=' + str(self.m) + ')'

@@ -2,5 +2,8 @@
 __pycache__
 *.pyc
 
-cifar-10-python.tar.gz
+*.tar.gz
 cifar-10-batches-py
+cifar-100-python
+
+*.pth
