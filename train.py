@@ -24,18 +24,23 @@ def train(opt):
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
+        
+    # Data transformations for data augmentation    
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
 
     # get CIFAR10/CIFAR100 train set
     if opt.dataset == "CIFAR10":
         train_set = CIFAR10(root="./data", train=True,
-                            download=True, transform=transforms.Compose(
-                                [transforms.ToTensor(),
-                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+                            download=True, transform=transform_train)
     else:
         train_set = CIFAR100(root="./data", train=True,
-                             download=True, transform=transforms.Compose(
-                                 [transforms.ToTensor(),
-                                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+                             download=True, transform=transform_train)
     num_classes = np.unique(train_set.targets).shape[0]
 
     # set stratified train/val split
@@ -96,13 +101,15 @@ def train(opt):
     criterion = CrossEntropyLoss()
     if opt.optimizer == "sgd":
         optimizer = SGD([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
-                        lr=opt.lr, weight_decay=opt.weight_decay)
+                        lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
     else:
         optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
                          lr=opt.lr, weight_decay=opt.weight_decay)
-    scheduler = lr_scheduler.StepLR(
-        optimizer, step_size=opt.lr_step, gamma=0.1)
-
+                         
+    #scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=0.1)
+    scheduler = lr_scheduler.CyclicLR(optimizer, base_lr=opt.lr_base, max_lr=opt.lr_max, 
+                    step_size_up=500, step_size_down=500, cycle_momentum=True)
+    
     # train/val loop
     best_val_loss = np.inf
     best_epoch = 0
@@ -188,4 +195,4 @@ if __name__ == "__main__":
     opt = Config()
 
     # perform training using arguments
-    model, metric_fc = train(opt)
+    train(opt)

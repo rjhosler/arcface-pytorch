@@ -18,6 +18,10 @@ class Config(object):
     lr_step = 10
     lr_decay = 0.95  # when val_loss increase, lr = lr*lr_decay
     weight_decay = 5e-4
+    
+    #upper and lower lr for cyclic training
+    lr_max = 0.05 
+    lr_base = 0.0005
 
     use_gpu = True
     gpu_id = "0"
