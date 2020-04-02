@@ -29,7 +29,15 @@ def train(opt):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(p=0.5),
+        #transforms.RandomVerticalFlip(),
+        #transforms.RandomRotation((-30,30)),
+        #transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    
+    # Normalize the test set same as training set without augmentation
+    transform_test = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
@@ -38,12 +46,17 @@ def train(opt):
     if opt.dataset == "CIFAR10":
         train_set = CIFAR10(root="./data", train=True,
                             download=True, transform=transform_train)
+        test_set = CIFAR10(root="./data", train=False, 
+                            download=True, transform=transform_test)                    
     else:
         train_set = CIFAR100(root="./data", train=True,
                              download=True, transform=transform_train)
+        test_set = CIFAR100(root="./data", train=False, 
+                            download=True, transform=transform_test) 
     num_classes = np.unique(train_set.targets).shape[0]
 
     # set stratified train/val split
+    """
     idx = list(range(len(train_set.targets)))
     train_idx, val_idx, _, _ = train_test_split(
         idx, train_set.targets, test_size=opt.val_split, random_state=42)
@@ -51,19 +64,20 @@ def train(opt):
     # get train/val samplers
     train_sampler = SubsetRandomSampler(train_idx)
     val_sampler = SubsetRandomSampler(val_idx)
-
+    """
+    
     # get train/val dataloaders
     train_loader = DataLoader(train_set,
                               batch_size=opt.batch_size,
                               num_workers=opt.num_workers,
-                              sampler=train_sampler)
-    val_loader = DataLoader(train_set,
+                              shuffle=True)
+    val_loader = DataLoader(test_set,
                             batch_size=opt.batch_size,
-                            num_workers=2,
-                            sampler=val_sampler)
+                            num_workers=opt.num_workers,
+                            shuffle=False)
 
     data_loaders = {"train": train_loader, "val": val_loader}
-    data_lengths = {"train": len(train_idx), "val": len(val_idx)}
+    #data_lengths = {"train": len(train_idx), "val": len(val_idx)}
 
     print("Train iteration batch size: {}".format(opt.batch_size))
     print("Train iterations per epoch: {}".format(len(train_loader)))
@@ -104,14 +118,14 @@ def train(opt):
                         lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
     else:
         optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
-                         lr=opt.lr, weight_decay=opt.weight_decay)
+                        lr=opt.lr, weight_decay=opt.weight_decay)
                          
     #scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=0.1)
     scheduler = lr_scheduler.CyclicLR(optimizer, base_lr=opt.lr_base, max_lr=opt.lr_max, 
-                    step_size_up=500, step_size_down=500, cycle_momentum=True)
+                         step_size_up=2, step_size_down=2, mode="exp_range")
     
     # train/val loop
-    best_val_loss = np.inf
+    best_val_acc = -100
     best_epoch = 0
     for epoch in range(opt.max_epoch):
         if epoch > 0:
@@ -130,8 +144,10 @@ def train(opt):
                 data_input, label = data
                 data_input = data_input.to(device)
                 label = label.to(device).long()
+                
                 # get feature embedding from resnet
                 feature = model(data_input)
+                
                 # get prediction and loss
                 output = metric_fc(feature, label)
                 loss = criterion(output, label)
@@ -153,24 +169,27 @@ def train(opt):
                 if phase == "train" and ii % opt.print_freq == 0:
                     acc = np.sum(np.concatenate(
                         acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-                    print("{}: Epoch -- {} Iter -- {} Loss -- {:.6f} Acc -- {:.6f}".format(
-                        phase, epoch, ii, np.average(loss_accum), acc))
+                        
+                    #print("{}: Epoch -- {} Iter -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.3f}".format(
+                    #    phase, epoch, ii, np.average(loss_accum), acc, scheduler.get_lr()[0]))
 
                 # print accumulated train/val results at end of epoch
                 if ii == len(data_loaders[phase]) - 1:
                     acc = np.sum(np.concatenate(
                         acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-                    print("{}: Epoch -- {}  Loss -- {:.6f} Acc -- {:.6f}".format(
-                        phase, epoch, np.average(loss_accum), acc))
+                        
+                    print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.3f}".format(
+                        phase, epoch, np.average(loss_accum), acc, scheduler.get_lr()[0]))
 
                     # check earlystopping convergence critera
                     if phase == "val":
                         # save model to checkpoints dir if training improved val loss, update curr_patience
-                        if np.average(loss_accum) < best_val_loss:
-                            print("val loss improved: {:.6f} to {:.6f} ({:.6f})\n".format(
-                                best_val_loss, np.average(loss_accum), np.average(loss_accum) - best_val_loss))
+                        if acc > best_val_acc:
+                            print("val accuracy improved: {:.6f} to {:.6f} ({:.6f})\n".format(
+                                best_val_acc, acc, acc - best_val_acc))
+                                
                             curr_patience = 0
-                            best_val_loss = np.average(loss_accum)
+                            best_val_acc = acc
                             best_epoch = epoch
                             save_model(model, opt.dataset,
                                        opt.metric, opt.backbone)
@@ -178,14 +197,16 @@ def train(opt):
                                        opt.metric + "_fc", opt.backbone)
 
                         else:
-                            print("val loss not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(
-                                best_val_loss, np.average(loss_accum), np.average(loss_accum) - best_val_loss))
+                            print("val accuracy not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(
+                                best_val_acc, acc, best_val_acc - acc))
+                                
                             curr_patience += 1
 
                         # terminate model if earlystopping patience exceeded
                         if curr_patience > opt.patience:
                             print("converged after {} epochs, loading best model from epoch {}".format(
                                 epoch, best_epoch))
+                                
                             return (load_model(opt.dataset, opt.metric, opt.backbone),
                                     load_model(opt.dataset, opt.metric + "_fc", opt.backbone))
 
