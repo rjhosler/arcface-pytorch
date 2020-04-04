@@ -1,6 +1,6 @@
 import os
 import torch
-from torch.nn import Module, Linear
+from torch.nn import Module, Linear, Dropout
 
 
 # customize final fully-connected layer of library resnet model
@@ -11,6 +11,20 @@ class resnet_fc(Module):
         self.out_features = out_features
 
     def forward(self, x):
+        if self.in_features == self.out_features:
+            return x
+        else:
+            return Linear(in_features=self.in_features, out_features=self.out_features)
+
+##VGG model appears to ignore this
+class vgg_fc(Module):
+    def __init__(self, out_features):
+        super(vgg_fc, self).__init__()
+        self.in_features = 512
+        self.out_features = out_features
+
+    def forward(self, x):
+        print('test') #Will not show up
         if self.in_features == self.out_features:
             return x
         else:

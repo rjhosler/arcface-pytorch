@@ -2,16 +2,21 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from torch.nn import CrossEntropyLoss, DataParallel
+from torch.nn import CrossEntropyLoss, DataParallel, Dropout
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
-from torchvision.models import resnet18, resnet34, resnet50
+from torchvision.models import vgg16, squeezenet1_0, mobilenet_v2
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
-from models.utils import save_model, load_model, resnet_fc
+from models.utils import save_model, load_model, resnet_fc, vgg_fc
 from models.metrics import Softmax, AAML, LMCL, AMSL
+from models.resnet_cifar10 import *
+import os
+
+#GPU 0 was crowded
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 
 np.random.seed(42)
@@ -30,19 +35,19 @@ def train(opt):
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         #transforms.RandomVerticalFlip(),
-        #transforms.RandomRotation((-30,30)),
-        #transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        #transforms.RandomPerspective(),
+        #transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]),
+        transforms.RandomErasing(),
     ])
     
-    # Normalize the test set same as training set without augmentation
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]),
     ])
 
-    # get CIFAR10/CIFAR100 train set
+        # get CIFAR10/CIFAR100 train set
     if opt.dataset == "CIFAR10":
         train_set = CIFAR10(root="./data", train=True,
                             download=True, transform=transform_train)
@@ -71,6 +76,7 @@ def train(opt):
                               batch_size=opt.batch_size,
                               num_workers=opt.num_workers,
                               shuffle=True)
+
     val_loader = DataLoader(test_set,
                             batch_size=opt.batch_size,
                             num_workers=opt.num_workers,
@@ -84,7 +90,7 @@ def train(opt):
 
     # get backbone model, set embedding size (if 512, take raw feature from backbone model)
     if opt.backbone == "resnet18":
-        model = resnet18(pretrained=True)
+        model = resnet18(pretrained=False)	
         model.fc = resnet_fc(opt.emb_feat_size)
     elif opt.backbone == "resnet34":
         model = resnet34(pretrained=True)
@@ -92,6 +98,16 @@ def train(opt):
     elif opt.backbone == "resnet50":
         model = resnet50(pretrained=True)
         model.fc = resnet_fc(opt.emb_feat_size)
+    elif opt.backbone == "vgg16":
+        model = vgg16(pretrained=True)
+        model.fc = vgg_fc(opt.emb_feat_size)
+    elif opt.backbone == "squeezenet1_0":
+        model = squeezenet1_0(pretrained=True)
+        model.fc = resnet_fc(opt.emb_feat_size)
+    elif opt.backbone == "mobilenet_v2":
+        model = mobilenet_v2(pretrained=True)
+        model.fc = resnet_fc(opt.emb_feat_size)
+
 
     # set metric loss function
     if opt.metric == "arcface":
@@ -120,12 +136,14 @@ def train(opt):
         optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
                         lr=opt.lr, weight_decay=opt.weight_decay)
                          
-    #scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=0.1)
-    scheduler = lr_scheduler.CyclicLR(optimizer, base_lr=opt.lr_base, max_lr=opt.lr_max, 
-                         step_size_up=2, step_size_down=2, mode="exp_range")
-    
+    # set LR scheduler
+    if opt.scheduler == 'StepLR':
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
+    else:
+        scheduler = lr_scheduler.CyclicLR(optimizer, base_lr=opt.lr_base, max_lr=opt.lr_max, 
+                        cycle_momentum=False, step_size_up=opt.step_up, step_size_down=opt.step_down, mode="exp_range")  
     # train/val loop
-    best_val_acc = -100
+    best_val_acc = -np.inf
     best_epoch = 0
     for epoch in range(opt.max_epoch):
         if epoch > 0:
@@ -178,7 +196,7 @@ def train(opt):
                     acc = np.sum(np.concatenate(
                         acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
                         
-                    print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.3f}".format(
+                    print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.4f}".format(
                         phase, epoch, np.average(loss_accum), acc, scheduler.get_lr()[0]))
 
                     # check earlystopping convergence critera
