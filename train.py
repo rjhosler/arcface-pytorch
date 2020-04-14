@@ -155,8 +155,6 @@ def train(opt):
     best_val_acc = -np.inf
     best_epoch = 0
     for epoch in range(opt.max_epoch):
-        if epoch > 0:
-            scheduler.step()
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []
@@ -185,6 +183,7 @@ def train(opt):
                 # only take step if in train phase
                 if phase == "train":
                     loss.backward()
+                    scheduler.step()
                     optimizer.step()
 
                 # accumulate train or val results
