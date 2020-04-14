@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import os
 
-__all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
-           'resnet152', 'resnext50_32x4d', 'resnext101_32x8d']
+__all__ = ["ResNet", "resnet18", "resnet34", "resnet50", "resnet101",
+           "resnet152", "resnext50_32x4d", "resnext101_32x8d"]
+
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
@@ -25,9 +26,11 @@ class BasicBlock(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
+            raise ValueError(
+                "BasicBlock only supports groups=1 and base_width=64")
         if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+            raise NotImplementedError(
+                "Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
@@ -120,11 +123,12 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        
+
         ## CIFAR10: kernel_size 7 -> 3, stride 2 -> 1, padding 3->1
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
         ## END
-        
+
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -140,7 +144,8 @@ class ResNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -201,87 +206,88 @@ def _resnet(arch, block, layers, pretrained, progress, device, **kwargs):
     model = ResNet(block, layers, **kwargs)
     if pretrained:
         script_dir = os.path.dirname(__file__)
-        state_dict = torch.load(script_dir + '/state_dicts/'+arch+'.pt', map_location=device)
+        state_dict = torch.load(
+            script_dir + "/state_dicts/" + arch + ".pt", map_location=device)
         model.load_state_dict(state_dict)
     return model
 
 
-def resnet18(pretrained=False, progress=True, device='cpu', **kwargs):
+def resnet18(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNet-18 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, device,
+    return _resnet("resnet18", BasicBlock, [2, 2, 2, 2], pretrained, progress, device,
                    **kwargs)
 
 
-def resnet34(pretrained=False, progress=True, device='cpu', **kwargs):
+def resnet34(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNet-34 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet34', BasicBlock, [3, 4, 6, 3], pretrained, progress, device,
+    return _resnet("resnet34", BasicBlock, [3, 4, 6, 3], pretrained, progress, device,
                    **kwargs)
 
 
-def resnet50(pretrained=False, progress=True, device='cpu', **kwargs):
+def resnet50(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNet-50 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress, device,
+    return _resnet("resnet50", Bottleneck, [3, 4, 6, 3], pretrained, progress, device,
                    **kwargs)
 
 
-def resnet101(pretrained=False, progress=True, **kwargs):
+def resnet101(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNet-101 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress, device,
+    return _resnet("resnet101", Bottleneck, [3, 4, 23, 3], pretrained, progress, device,
                    **kwargs)
 
 
-def resnet152(pretrained=False, progress=True, **kwargs):
+def resnet152(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNet-152 model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet152', Bottleneck, [3, 8, 36, 3], pretrained, progress, device,
+    return _resnet("resnet152", Bottleneck, [3, 8, 36, 3], pretrained, progress, device,
                    **kwargs)
 
 
-def resnext50_32x4d(pretrained=False, progress=True, **kwargs):
+def resnext50_32x4d(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNeXt-50 32x4d model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    kwargs['groups'] = 32
-    kwargs['width_per_group'] = 4
-    return _resnet('resnext50_32x4d', Bottleneck, [3, 4, 6, 3],
+    kwargs["groups"] = 32
+    kwargs["width_per_group"] = 4
+    return _resnet("resnext50_32x4d", Bottleneck, [3, 4, 6, 3],
                    pretrained, progress, device, **kwargs)
 
 
-def resnext101_32x8d(pretrained=False, progress=True, **kwargs):
+def resnext101_32x8d(pretrained=False, progress=True, device="cpu", **kwargs):
     """Constructs a ResNeXt-101 32x8d model.
 
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    kwargs['groups'] = 32
-    kwargs['width_per_group'] = 8
-    return _resnet('resnext101_32x8d', Bottleneck, [3, 4, 23, 3],
+    kwargs["groups"] = 32
+    kwargs["width_per_group"] = 8
+    return _resnet("resnext101_32x8d", Bottleneck, [3, 4, 23, 3],
                    pretrained, progress, device, **kwargs)

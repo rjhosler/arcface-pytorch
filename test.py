@@ -10,7 +10,6 @@ from config import Config
 from models.utils import load_model
 from torch.optim import lr_scheduler, SGD, Adam
 
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -45,9 +44,10 @@ def test(opt):
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]),
+        transforms.Normalize([0.4914, 0.4822, 0.4465],
+                             [0.2023, 0.1994, 0.2010]),
     ])
-    
+
     # get CIFAR10/CIFAR100 test set
     if opt.dataset == "CIFAR10":
         test_set = CIFAR10(root="./data", train=False,
@@ -74,14 +74,14 @@ def test(opt):
     model = DataParallel(model)
     metric_fc.to(device)
     metric_fc = DataParallel(metric_fc)
-    
+
     # get prediction results for model
     y_true, y_pred = [], []
     for ii, data in enumerate(test_loader):
         acc_accum = []
         # load data batch to device
         data_input, label = data
-        
+
         # perform adversarial attack update to images
         if opt.mode == "fgsm":
             data_input = fgsm_attack(
@@ -90,12 +90,12 @@ def test(opt):
         # load images and labels to device
         data_input = data_input.to(device)
         label = label.to(device).long()
-    
+
         # get feature embedding from resnet
         feature = model(data_input)
         # get prediction
         output = metric_fc(feature, label)
-        
+
         # accumulate test results
         output = output.data.cpu().numpy()
         output = np.argmax(output, axis=1)
@@ -105,8 +105,7 @@ def test(opt):
         y_pred.append(output)
 
     acc = np.sum(np.concatenate(
-                        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-
+        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
 
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))
@@ -114,7 +113,7 @@ def test(opt):
     return y_true, y_pred
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # load in arguments defined in config/config.py
     opt = Config()
 

@@ -44,14 +44,30 @@ class AAML(nn.Module):
         self.mm = math.sin(math.pi - m) * m
 
     def forward(self, input, label):
-        cosine = F.linear(F.normalize(input), F.normalize(self.weight))
-        sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
-        phi = cosine * self.cos_m - sine * self.sin_m
-        phi = torch.where(cosine > self.th, phi, cosine - self.mm)
-        one_hot = torch.zeros(cosine.size(), device=self.device)
-        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
-        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
-        output *= self.s
+        # add angular margin penalty to correct class during training only
+        if self.training:
+            cosine = F.linear(F.normalize(input), F.normalize(self.weight))
+            sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
+            phi = cosine * self.cos_m - sine * self.sin_m
+            phi = torch.where(cosine > self.th, phi, cosine - self.mm)
+            one_hot = torch.zeros(cosine.size(), device=self.device)
+            one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+            output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+            output *= self.s
+        else:
+            cos_m = 1
+            sin_m = 0
+            th = 1
+            mm = 0
+            cosine = F.linear(F.normalize(input), F.normalize(self.weight))
+            sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
+            sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
+            phi = cosine * cos_m - sine * sin_m
+            phi = torch.where(cosine > th, phi, cosine - mm)
+            one_hot = torch.zeros(cosine.size(), device=self.device)
+            one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+            output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+            output *= self.s
         return output
 
 
