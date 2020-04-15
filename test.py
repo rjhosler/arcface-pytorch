@@ -10,6 +10,7 @@ from config import Config
 from models.utils import load_model
 from torch.optim import lr_scheduler, SGD, Adam
 
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -77,8 +78,8 @@ def test(opt):
 
     # get prediction results for model
     y_true, y_pred = [], []
+    acc_accum = []
     for ii, data in enumerate(test_loader):
-        acc_accum = []
         # load data batch to device
         data_input, label = data
 

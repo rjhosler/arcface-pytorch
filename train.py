@@ -13,6 +13,7 @@ from models.utils import save_model, load_model, resnet_fc
 from models.metrics import Softmax, AAML, LMCL, AMSL
 from models.resnet_cifar10 import resnet18, resnet34, resnet50
 
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -48,7 +49,8 @@ def train(opt):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomAffine(10, scale=(1, 1.5), shear=10),
+        #transforms.RandomAffine(10, scale=(1, 1.5), shear=10),
+        #transforms.RandomRotation(30),
         transforms.ToTensor(),
         transforms.Normalize([0.4914, 0.4822, 0.4465],
                              [0.2023, 0.1994, 0.2010]),
@@ -137,8 +139,17 @@ def train(opt):
         else:
             optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
                              lr=opt.lr, weight_decay=opt.weight_decay)
-        scheduler = lr_scheduler.StepLR(
-            optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
+        
+    elif opt.scheduler == "dynamic":
+        if opt.optimizer == "sgd":
+            optimizer = SGD([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
+                            lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
+        else:
+            optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
+                             lr=opt.lr, weight_decay=opt.weight_decay)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10)
+        
     else:
         if opt.optimizer == "sgd":
             optimizer = SGD([{"params": model.parameters()}, {
@@ -155,6 +166,9 @@ def train(opt):
     best_val_acc = -np.inf
     best_epoch = 0
     for epoch in range(opt.max_epoch):
+        if epoch > 0:
+            scheduler.step(loss_total)
+    
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []
@@ -183,7 +197,6 @@ def train(opt):
                 # only take step if in train phase
                 if phase == "train":
                     loss.backward()
-                    scheduler.step()
                     optimizer.step()
 
                 # accumulate train or val results
@@ -199,7 +212,10 @@ def train(opt):
                         acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
 
                     print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.4f}".format(
-                        phase, epoch, np.average(loss_accum), acc, scheduler.get_last_lr()[0]))
+                        phase, epoch, np.average(loss_accum), acc, optimizer.param_groups[0]['lr']))
+                        
+                    if phase == "train":
+                        loss_total = np.mean(loss_accum)
 
                     # check earlystopping convergence critera
                     if phase == "val":
