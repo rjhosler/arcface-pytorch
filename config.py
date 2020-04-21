@@ -2,10 +2,11 @@ class Config(object):
     env = "default"
     dataset = "CIFAR10"
     backbone = "resnet18"
-    mode = "clean"
+    train_mode = "clean"
+    test_mode = "pgd_20"  # clean, fgsm, bim, pgd_7, pgd_20
 
-    emb_feat_size = 512  # feature embedding size. 1000 for vgg16 and squeezenet1_0
-    metric = "softmax"  # arcface, cosface, sphereface, softmax
+    emb_feat_size = 512  # feature embedding size
+    metric = "arcface"  # softmax, arcface, cosface, sphereface
     m = 0.15
     s = 4
 
@@ -29,5 +30,4 @@ class Config(object):
 
     use_gpu = True
     gpu_id = "0"
-    num_workers = 4
-    print_freq = 15
+    num_workers = 0

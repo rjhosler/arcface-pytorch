@@ -3,37 +3,18 @@ import numpy as np
 from sklearn.metrics import classification_report, accuracy_score
 import torch
 from torch.nn import DataParallel, CrossEntropyLoss
+from torch.nn.functional import normalize
+from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import load_model
-from torch.optim import lr_scheduler, SGD, Adam
+from models.attacks import fgsm, bim, pgd
 
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
-
-
-def fgsm_attack(model, metric_fc, images, labels, eps, device):
-    loss = CrossEntropyLoss()
-
-    images = images.to(device)
-    labels = labels.to(device)
-    images.requires_grad = True
-
-    features = model(images)
-    outputs = metric_fc(features, labels)
-
-    model.zero_grad()
-    cost = loss(outputs, labels).to(device)
-    cost.backward()
-
-    attack_images = images + eps*images.grad.sign()
-    attack_images = torch.clamp(attack_images, 0, 1)
-
-    return attack_images
 
 
 def test(opt):
@@ -45,8 +26,6 @@ def test(opt):
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465],
-                             [0.2023, 0.1994, 0.2010]),
     ])
 
     # get CIFAR10/CIFAR100 test set
@@ -67,9 +46,9 @@ def test(opt):
     print("Test iteration batch size: {}".format(opt.batch_size))
     print("Test iterations per epoch: {}".format(len(test_loader)))
 
-    model = load_model(opt.dataset, opt.metric, opt.backbone)
-    metric_fc = load_model(opt.dataset, opt.metric +
-                           "_fc", opt.backbone)
+    model = load_model(opt.dataset, opt.train_mode, opt.metric, opt.backbone)
+    metric_fc = load_model(opt.dataset, opt.train_mode,
+                           opt.metric + "_fc", opt.backbone)
 
     model.to(device)
     model = DataParallel(model)
@@ -84,17 +63,31 @@ def test(opt):
         data_input, label = data
 
         # perform adversarial attack update to images
-        if opt.mode == "fgsm":
-            data_input = fgsm_attack(
-                model, metric_fc, data_input, label, 8./255., device)
+        if opt.test_mode == "fgsm":
+            data_input = fgsm(
+                model, metric_fc, data_input, label, 8. / 255., device)
+        elif opt.test_mode == "bim":
+            data_input = bim(
+                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 7, device)
+        elif opt.test_mode == "pgd_7":
+            data_input = pgd(
+                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 7, device)
+        elif opt.test_mode == "pgd_20":
+            data_input = pgd(
+                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 20, device)
+        else:
+            pass
 
-        # load images and labels to device
+        # normalize input images
         data_input = data_input.to(device)
         label = label.to(device).long()
+        for i in range(data_input.shape[0]):
+            data_input[i] = transforms.functional.normalize(
+                data_input[i], [0.4914, 0.4822, 0.4465],
+                [0.2023, 0.1994, 0.2010])
 
-        # get feature embedding from resnet
+        # get feature embedding from resnet and prediction
         feature = model(data_input)
-        # get prediction
         output = metric_fc(feature, label)
 
         # accumulate test results

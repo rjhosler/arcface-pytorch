@@ -13,7 +13,6 @@ from models.utils import save_model, load_model, resnet_fc
 from models.metrics import Softmax, AAML, LMCL, AMSL
 from models.resnet_cifar10 import resnet18, resnet34, resnet50
 
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -49,17 +48,11 @@ def train(opt):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        #transforms.RandomAffine(10, scale=(1, 1.5), shear=10),
-        #transforms.RandomRotation(30),
         transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465],
-                             [0.2023, 0.1994, 0.2010]),
         transforms.RandomErasing(),
     ])
     transform_val = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465],
-                             [0.2023, 0.1994, 0.2010]),
     ])
 
     # get CIFAR10/CIFAR100 train/val set
@@ -183,14 +176,20 @@ def train(opt):
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
                 data_input, label = data
+
+                # normalize input images
                 data_input = data_input.to(device)
                 label = label.to(device).long()
+                for i in range(data_input.shape[0]):
+                    data_input[i] = transforms.functional.normalize(
+                        data_input[i], [0.4914, 0.4822, 0.4465],
+                        [0.2023, 0.1994, 0.2010])
 
-                # get feature embedding from resnet
+                # get feature embedding from resnet and prediction
                 feature = model(data_input)
-
-                # get prediction and loss
                 output = metric_fc(feature, label)
+
+                # get loss
                 loss = criterion(output, label)
                 optimizer.zero_grad()
 
@@ -219,7 +218,7 @@ def train(opt):
 
                     # check earlystopping convergence critera
                     if phase == "val":
-                        # save model to checkpoints dir if training improved val loss, update curr_patience
+                        # save model to checkpoints dir if training improved val acc, update curr_patience
                         if acc > best_val_acc:
                             print("val accuracy improved: {:.6f} to {:.6f} ({:.6f})\n".format(
                                 best_val_acc, acc, acc - best_val_acc))
@@ -227,9 +226,9 @@ def train(opt):
                             curr_patience = 0
                             best_val_acc = acc
                             best_epoch = epoch
-                            save_model(model, opt.dataset,
+                            save_model(model, opt.dataset, opt.train_mode,
                                        opt.metric, opt.backbone)
-                            save_model(metric_fc, opt.dataset,
+                            save_model(metric_fc, opt.dataset, opt.train_mode,
                                        opt.metric + "_fc", opt.backbone)
 
                         else:
@@ -243,8 +242,7 @@ def train(opt):
                             print("converged after {} epochs, loading best model from epoch {}".format(
                                 epoch, best_epoch))
 
-                            return (load_model(opt.dataset, opt.metric, opt.backbone),
-                                    load_model(opt.dataset, opt.metric + "_fc", opt.backbone))
+                            return best_val_acc
 
 
 if __name__ == "__main__":
@@ -252,4 +250,4 @@ if __name__ == "__main__":
     opt = Config()
 
     # perform training using arguments
-    train(opt)
+    best_val_acc = train(opt)
