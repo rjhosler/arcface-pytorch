@@ -49,6 +49,40 @@ def bim(model, images, labels, eps, alpha, iters, device):
     return adv_images
 
 
+def mim(model, images, labels, eps, alpha, momemtum, iters, device):
+    loss = CrossEntropyLoss()
+
+    images = images.to(device)
+    labels = labels.to(device)
+    grad_prev = torch.zeros_like(images)
+
+    for i in range(iters):
+        images.requires_grad = True
+
+        outputs = model(images, labels)
+
+        cost = loss(outputs, labels).to(device)
+        model.zero_grad()
+        cost.backward()
+
+        if i == 0:
+            grad = images.grad.data
+        else:
+            grad = momemtum * grad_prev + (1 - momemtum) * images.grad.data
+        adv_images = images + alpha * grad.sign()
+        a = torch.clamp(images - eps, min=0)
+        b = (adv_images >= a).float() * \
+            adv_images + (a > adv_images).float() * a
+        c = (b > images + eps).float() * (images+eps) + \
+            (images+eps >= b).float() * b
+        images = torch.clamp(c, max=1).detach()
+        grad_prev = grad
+
+    adv_images = images
+
+    return adv_images
+
+
 def pgd(model, images, labels, eps, alpha, iters, device):
     loss = CrossEntropyLoss()
 
@@ -56,6 +90,8 @@ def pgd(model, images, labels, eps, alpha, iters, device):
     labels = labels.to(device)
 
     ori_images = images.data
+    images = images + \
+        torch.FloatTensor(images.shape).uniform_(-eps, eps).to(device)
 
     for i in range(iters):
         images.requires_grad = True

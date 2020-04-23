@@ -10,7 +10,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import load_model
-from models.attacks import fgsm, bim, pgd
+from models.attacks import fgsm, bim, pgd, mim
 
 
 np.random.seed(42)
@@ -58,36 +58,45 @@ def test(opt):
         # load data batch to device
         data_input, label = data
 
-        # perform adversarial attack update to images
-        if opt.test_mode == "fgsm":
-            data_input = fgsm(
-                model, data_input, label, 8. / 255, device)
-        elif opt.test_mode == "bim":
-            data_input = bim(
-                model, data_input, label, 8. / 255, 2. / 255, 7, device)
-        elif opt.test_mode == "pgd_7":
-            data_input = pgd(
-                model, data_input, label, 8. / 255, 2. / 255, 7, device)
-        elif opt.test_mode == "pgd_20":
-            data_input = pgd(
-                model, data_input, label, 8. / 255, 2. / 255, 20, device)
-        else:
-            pass
+        output = label.cpu().numpy()
+        for restart_cnt in range(opt.test_restarts):
+            # perform adversarial attack update to images
+            if opt.test_mode == "fgsm":
+                data_input = fgsm(
+                    model, data_input, label, 8. / 255, device)
+            elif opt.test_mode == "bim":
+                data_input = bim(
+                    model, data_input, label, 8. / 255, 2. / 255, 7, device)
+            elif opt.test_mode == "pgd_7":
+                data_input = pgd(
+                    model, data_input, label, 8. / 255, 2. / 255, 7, device)
+            elif opt.test_mode == "pgd_20":
+                data_input = pgd(
+                    model, data_input, label, 8. / 255, 2. / 255, 20, device)
+            elif opt.test_mode == "mim":
+                data_input = mim(
+                    model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+            else:
+                pass
+        
+            # normalize input images
+            data_input = data_input.to(device)
+            label = label.to(device).long()
 
-        # normalize input images
-        data_input = data_input.to(device)
-        label = label.to(device).long()
+            # get feature embedding from resnet and prediction
+            output_i = model(data_input, label)
 
-        # get feature embedding from resnet and prediction
-        output = model(data_input, label)
+            # accumulate test results
+            output_i = output_i.data.cpu().numpy()
+            output_i = np.argmax(output_i, axis=1)
+            label_i = label.data.cpu().numpy()
 
-        # accumulate test results
-        output = output.data.cpu().numpy()
-        output = np.argmax(output, axis=1)
-        label = label.data.cpu().numpy()
-        y_true.append(label)
+            output[np.where(output_i != label_i)
+                   ] = output_i[np.where(output_i != label_i)]
+            
+        y_true.append(label.cpu().numpy())
         y_pred.append(output)
-        acc_accum.append(output == label)
+        acc_accum.append(output == label.cpu().numpy())
         
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))

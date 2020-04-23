@@ -1,11 +1,12 @@
 class Config(object):
     env = "default"
     dataset = "CIFAR10"
-    backbone = "wresnet50"  # resnet18, resnet34, wresnet50
+    backbone = "resnet18"  # resnet18, resnet34
     train_mode = "clean"
-    test_mode = "clean"  # clean, fgsm, bim, pgd_7, pgd_20
+    test_mode = "pgd_7"  # clean, fgsm, bim, pgd_7, pgd_20, mim
+    test_restarts = 1 # 1 (for all but 20PGD col), 20
 
-    metric = "softmax"  # softmax, arcface, cosface, sphereface
+    metric = "arcface"  # softmax, arcface, cosface, sphereface
     m = 0.15
     s = 4
 
@@ -25,4 +26,4 @@ class Config(object):
 
     use_gpu = True
     gpu_id = "0"
-    num_workers = 0
+    num_workers = 2
