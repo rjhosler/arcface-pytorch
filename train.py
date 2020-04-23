@@ -2,39 +2,21 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from torch.nn import CrossEntropyLoss, DataParallel, Dropout
+from torch.nn import CrossEntropyLoss, DataParallel
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
-from models.utils import save_model, load_model, resnet_fc
+from models.utils import save_model, load_model
 from models.metrics import Softmax, AAML, LMCL, AMSL
-from models.resnet_cifar10 import resnet18, resnet34, resnet50
+from models.resnet_pytorch import wide_resnet50_2
+from models.resnet_cifar10 import resnet18, resnet34
 
 
 np.random.seed(42)
 torch.manual_seed(42)
-
-
-def cyclical_lr(stepsize, min_lr=3e-4, max_lr=3e-3):
-    #https://towardsdatascience.com/adaptive-and-cyclical-learning-rates-using-pytorch-2bf904d18dee
-
-    # Scaler: we can adapt this if we do not want the triangular CLR
-    def scaler(x): return 1.
-
-    # Lambda function to calculate the LR
-    def lr_lambda(it): return min_lr + (max_lr -
-                                        min_lr) * relative(it, stepsize)
-
-    # Additional function to see where on the cycle we are
-    def relative(it, stepsize):
-        cycle = np.floor(1 + it / (2 * stepsize))
-        x = abs(it / stepsize - 2 * cycle + 1)
-        return max(0, (1 - x)) * scaler(cycle)
-
-    return lr_lambda
 
 
 def train(opt):
@@ -95,31 +77,26 @@ def train(opt):
     # get backbone model, set embedding size (if 512, take raw feature from backbone model)
     if opt.backbone == "resnet18":
         model = resnet18(pretrained=False)
-        model.fc = resnet_fc(model.fc.in_features, opt.emb_feat_size)
     elif opt.backbone == "resnet34":
         model = resnet34(pretrained=False)
-        model.fc = resnet_fc(model.fc.in_features, opt.emb_feat_size)
-    elif opt.backbone == "resnet50":
-        model = resnet50(pretrained=False)
-        model.fc = resnet_fc(model.fc.in_features, opt.emb_feat_size)
+    else:
+        model = wide_resnet50_2(pretrained=False)
 
     # set metric loss function
     if opt.metric == "arcface":
-        metric_fc = AAML(
-            opt.emb_feat_size, num_classes, device, s=opt.s, m=opt.m)
+        model.fc = AAML(
+            model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
     elif opt.metric == "cosface":
-        metric_fc = LMCL(
-            opt.emb_feat_size, num_classes, device, s=opt.s, m=opt.m)
+        model.fc = LMCL(
+            model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
     elif opt.metric == "sphereface":
-        metric_fc = AMSL(
-            opt.emb_feat_size, num_classes, device, m=opt.m)
+        model.fc = AMSL(
+            model.fc.in_features, num_classes, device, m=opt.m)
     else:
-        metric_fc = Softmax(opt.emb_feat_size, num_classes)
+        model.fc = Softmax(model.fc.in_features, num_classes)
 
     model.to(device)
     model = DataParallel(model)
-    metric_fc.to(device)
-    metric_fc = DataParallel(metric_fc)
 
     # set optimizer
     criterion = CrossEntropyLoss()
@@ -127,33 +104,21 @@ def train(opt):
     # set LR scheduler
     if opt.scheduler == "decay":
         if opt.optimizer == "sgd":
-            optimizer = SGD([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
+            optimizer = SGD([{"params": model.parameters()}],
                             lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
         else:
-            optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
+            optimizer = Adam([{"params": model.parameters()}],
                              lr=opt.lr, weight_decay=opt.weight_decay)
         scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
         
-    elif opt.scheduler == "dynamic":
-        if opt.optimizer == "sgd":
-            optimizer = SGD([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
-        else:
-            optimizer = Adam([{"params": model.parameters()}, {"params": metric_fc.parameters()}],
-                             lr=opt.lr, weight_decay=opt.weight_decay)
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10)
-        
     else:
         if opt.optimizer == "sgd":
-            optimizer = SGD([{"params": model.parameters()}, {
-                            "params": metric_fc.parameters()}], lr=1.)
+            optimizer = SGD([{"params": model.parameters()}],
+                            lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
         else:
-            optimizer = Adam([{"params": model.parameters()}, {
-                             "params": metric_fc.parameters()}], lr=1.)
-        step_size = 4 * len(train_loader)
-        clr = cyclical_lr(step_size, min_lr=opt.cycle_lr /
-                          opt.cycle_factor, max_lr=opt.cycle_lr)
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, [clr, clr])
+            optimizer = Adam([{"params": model.parameters()}],
+                             lr=opt.lr, weight_decay=opt.weight_decay)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10)
 
     # train/val loop
     best_val_acc = -np.inf
@@ -168,10 +133,8 @@ def train(opt):
 
             if phase == "train":
                 model.train()
-                metric_fc.train()
             else:
                 model.eval()
-                metric_fc.eval()
 
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
@@ -180,14 +143,9 @@ def train(opt):
                 # normalize input images
                 data_input = data_input.to(device)
                 label = label.to(device).long()
-                for i in range(data_input.shape[0]):
-                    data_input[i] = transforms.functional.normalize(
-                        data_input[i], [0.4914, 0.4822, 0.4465],
-                        [0.2023, 0.1994, 0.2010])
 
                 # get feature embedding from resnet and prediction
-                feature = model(data_input)
-                output = metric_fc(feature, label)
+                output = model(data_input, label)
 
                 # get loss
                 loss = criterion(output, label)
@@ -228,8 +186,6 @@ def train(opt):
                             best_epoch = epoch
                             save_model(model, opt.dataset, opt.train_mode,
                                        opt.metric, opt.backbone)
-                            save_model(metric_fc, opt.dataset, opt.train_mode,
-                                       opt.metric + "_fc", opt.backbone)
 
                         else:
                             print("val accuracy not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(

@@ -47,13 +47,9 @@ def test(opt):
     print("Test iterations per epoch: {}".format(len(test_loader)))
 
     model = load_model(opt.dataset, opt.train_mode, opt.metric, opt.backbone)
-    metric_fc = load_model(opt.dataset, opt.train_mode,
-                           opt.metric + "_fc", opt.backbone)
 
     model.to(device)
     model = DataParallel(model)
-    metric_fc.to(device)
-    metric_fc = DataParallel(metric_fc)
 
     # get prediction results for model
     y_true, y_pred = [], []
@@ -65,45 +61,40 @@ def test(opt):
         # perform adversarial attack update to images
         if opt.test_mode == "fgsm":
             data_input = fgsm(
-                model, metric_fc, data_input, label, 8. / 255., device)
+                model, data_input, label, 8. / 255, device)
         elif opt.test_mode == "bim":
             data_input = bim(
-                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 7, device)
+                model, data_input, label, 8. / 255, 2. / 255, 7, device)
         elif opt.test_mode == "pgd_7":
             data_input = pgd(
-                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 7, device)
+                model, data_input, label, 8. / 255, 2. / 255, 7, device)
         elif opt.test_mode == "pgd_20":
             data_input = pgd(
-                model, metric_fc, data_input, label, 8. / 255., 2 / 255., 20, device)
+                model, data_input, label, 8. / 255, 2. / 255, 20, device)
         else:
             pass
 
         # normalize input images
         data_input = data_input.to(device)
         label = label.to(device).long()
-        for i in range(data_input.shape[0]):
-            data_input[i] = transforms.functional.normalize(
-                data_input[i], [0.4914, 0.4822, 0.4465],
-                [0.2023, 0.1994, 0.2010])
 
         # get feature embedding from resnet and prediction
-        feature = model(data_input)
-        output = metric_fc(feature, label)
+        output = model(data_input, label)
 
         # accumulate test results
         output = output.data.cpu().numpy()
         output = np.argmax(output, axis=1)
         label = label.data.cpu().numpy()
-        acc_accum.append(output == label)
         y_true.append(label)
         y_pred.append(output)
-
-    acc = np.sum(np.concatenate(
-        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-
+        acc_accum.append(output == label)
+        
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))
-    print("Accuracy: {}".format(acc))
+
+    acc_accum = np.sum(np.concatenate(
+        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
+    print("Accuracy: {}".format(acc_accum))
     return y_true, y_pred
 
 

@@ -10,10 +10,10 @@ import math
 class Softmax(nn.Module):
     def __init__(self, in_features, out_features):
         super(Softmax, self).__init__()
-        self.fc = Linear(in_features, out_features)
+        self.layer = Linear(in_features, out_features)
 
     def forward(self, input, label):
-        output = self.fc(input)
+        output = self.layer(input)
         return output
 
 
