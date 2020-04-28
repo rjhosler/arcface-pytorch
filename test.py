@@ -79,7 +79,7 @@ def test(opt):
                     model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
             elif opt.test_mode == "cw":
                 #(model, images, labels, c, kappa, max_iter, learning_rate, device)
-                data_input = cw(model, data_input, label, 0.1, 0, 20, 0.01, device, ii)
+                data_input = cw(model, data_input, label, 1, 0, 100, 0.001, device, ii)
             else:
                  pass
         

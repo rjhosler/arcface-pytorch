@@ -144,14 +144,13 @@ def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
         cost.backward()
         optimizer.step()
 
-        '''
         # Early Stop when loss does not converge.
         if step % (max_iter//10) == 0 :
             if cost > prev :
                 print('Attack Stopped due to CONVERGENCE....')
                 return a
             prev = cost
-        '''
+
         print('- Learning Progress : %2.2f %%, Iteration: %d        ' %((step+1)/max_iter*100, ii), end='\r')
 
     attack_images = 1/2*(nn.Tanh()(w) + 1)
