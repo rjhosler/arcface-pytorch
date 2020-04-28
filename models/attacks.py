@@ -1,6 +1,7 @@
 import torch
 from torch.nn import CrossEntropyLoss
-
+import torch.optim as optim
+import torch.nn as nn
 
 def fgsm(model, images, labels, eps, device):
     loss = CrossEntropyLoss()
@@ -108,3 +109,51 @@ def pgd(model, images, labels, eps, alpha, iters, device):
         images = torch.clamp(ori_images + eta, min=0, max=1).detach_()
 
     return images
+
+def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
+
+    images = images.to(device)     
+    labels = labels.to(device)
+
+    # Define f-function
+    def f(x) :
+        outputs = model(x, labels)
+        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(device)
+
+        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1)
+        j = torch.masked_select(outputs, one_hot_labels.bool())
+        
+        return torch.clamp(j-i, min=-kappa)
+    
+    w = torch.zeros_like(images, requires_grad=True).to(device)
+
+    optimizer = optim.Adam([w], lr=learning_rate)
+
+    prev = 1e10
+    
+    for step in range(max_iter) :
+
+        a = 1/2*(nn.Tanh()(w) + 1)
+
+        loss1 = nn.MSELoss(reduction='sum')(a, images)
+        loss2 = torch.sum(c*f(a))
+
+        cost = loss1 + loss2
+
+        optimizer.zero_grad()
+        cost.backward()
+        optimizer.step()
+
+        '''
+        # Early Stop when loss does not converge.
+        if step % (max_iter//10) == 0 :
+            if cost > prev :
+                print('Attack Stopped due to CONVERGENCE....')
+                return a
+            prev = cost
+        '''
+        print('- Learning Progress : %2.2f %%, Iteration: %d        ' %((step+1)/max_iter*100, ii), end='\r')
+
+    attack_images = 1/2*(nn.Tanh()(w) + 1)
+
+    return attack_images

@@ -10,8 +10,9 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import load_model
-from models.attacks import fgsm, bim, pgd, mim
+from models.attacks import fgsm, bim, pgd, mim, cw
 
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -76,8 +77,11 @@ def test(opt):
             elif opt.test_mode == "mim":
                 data_input = mim(
                     model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+            elif opt.test_mode == "cw":
+                #(model, images, labels, c, kappa, max_iter, learning_rate, device)
+                data_input = cw(model, data_input, label, 0.1, 0, 20, 0.01, device, ii)
             else:
-                pass
+                 pass
         
             # normalize input images
             data_input = data_input.to(device)

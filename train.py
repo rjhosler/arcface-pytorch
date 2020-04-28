@@ -14,6 +14,7 @@ from models.metrics import Softmax, AAML, LMCL, AMSL
 from models.attacks import fgsm, bim, pgd, mim
 from models.resnet_cifar10 import resnet18, resnet34
 
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)

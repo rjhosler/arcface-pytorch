@@ -3,10 +3,10 @@ class Config(object):
     dataset = "CIFAR10"
     backbone = "resnet18"  # resnet18, resnet34
     train_mode = "clean"
-    test_mode = "pgd_7"  # clean, fgsm, bim, pgd_7, pgd_20, mim
+    test_mode = "cw"  # clean, fgsm, bim, pgd_7, pgd_20, mim, cw
     test_restarts = 1 # 1 (for all but 20PGD col), 20
 
-    metric = "arcface"  # softmax, arcface, cosface, sphereface
+    metric = "softmax"  # softmax, arcface, cosface, sphereface
     m = 0.15
     s = 4
 
