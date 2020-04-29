@@ -12,7 +12,6 @@ from config import Config
 from models.utils import load_model
 from models.attacks import fgsm, bim, pgd, mim, cw
 
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -48,9 +47,21 @@ def test(opt):
     print("Test iterations per epoch: {}".format(len(test_loader)))
 
     model = load_model(opt.dataset, opt.train_mode, opt.metric, opt.backbone)
-
     model.to(device)
     model = DataParallel(model)
+
+    # load balck box model for black box attacks
+    if opt.test_bb:
+        model_bb = load_model(opt.dataset + "_bb", opt.train_mode,
+                              opt.metric, opt.backbone)
+        model_bb.to(device)
+        model_bb = DataParallel(model_bb)
+
+    # set model used to generate adversarial attacks
+    if opt.test_bb:
+        attack_model = model_bb
+    else:
+        attack_model = model
 
     # get prediction results for model
     y_true, y_pred = [], []
@@ -58,31 +69,32 @@ def test(opt):
     for ii, data in enumerate(test_loader):
         # load data batch to device
         data_input, label = data
-
         output = label.cpu().numpy()
+
+        # random restarts for pgd attack
         for restart_cnt in range(opt.test_restarts):
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
                 data_input = fgsm(
-                    model, data_input, label, 8. / 255, device)
+                    attack_model, data_input, label, 8. / 255, device)
             elif opt.test_mode == "bim":
                 data_input = bim(
-                    model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                    attack_model, data_input, label, 8. / 255, 2. / 255, 7, device)
             elif opt.test_mode == "pgd_7":
                 data_input = pgd(
-                    model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                    attack_model, data_input, label, 8. / 255, 2. / 255, 7, device)
             elif opt.test_mode == "pgd_20":
                 data_input = pgd(
-                    model, data_input, label, 8. / 255, 2. / 255, 20, device)
+                    attack_model, data_input, label, 8. / 255, 2. / 255, 20, device)
             elif opt.test_mode == "mim":
                 data_input = mim(
-                    model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+                    attack_model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
             elif opt.test_mode == "cw":
-                #(model, images, labels, c, kappa, max_iter, learning_rate, device)
-                data_input = cw(model, data_input, label, 1, 0.15, 100, 0.001, device, ii)
+                data_input = cw(attack_model, data_input, label, 1,
+                                0.15, 100, 0.001, device, ii)
             else:
-                 pass
-        
+                pass
+
             # normalize input images
             data_input = data_input.to(device)
             label = label.to(device).long()
@@ -97,11 +109,11 @@ def test(opt):
 
             output[np.where(output_i != label_i)
                    ] = output_i[np.where(output_i != label_i)]
-            
+
         y_true.append(label.cpu().numpy())
         y_pred.append(output)
         acc_accum.append(output == label.cpu().numpy())
-        
+
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))
 

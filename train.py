@@ -11,10 +11,9 @@ from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import save_model, load_model
 from models.metrics import Softmax, AAML, LMCL, AMSL
-from models.attacks import fgsm, bim, pgd, mim
-from models.resnet_cifar10 import resnet18, resnet34
+from models.attacks import fgsm, bim, pgd, mim, cw
+from models.resnet_cifar import resnet18, resnet34
 
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 np.random.seed(42)
 torch.manual_seed(42)
@@ -108,8 +107,9 @@ def train(opt):
         else:
             optimizer = Adam([{"params": model.parameters()}],
                              lr=opt.lr, weight_decay=opt.weight_decay)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
-        
+        scheduler = lr_scheduler.StepLR(
+            optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
+
     else:
         if opt.optimizer == "sgd":
             optimizer = SGD([{"params": model.parameters()}],
@@ -117,7 +117,8 @@ def train(opt):
         else:
             optimizer = Adam([{"params": model.parameters()}],
                              lr=opt.lr, weight_decay=opt.weight_decay)
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=10)
+        scheduler = lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.1, patience=10)
 
     # train/val loop
     best_val_acc = -np.inf
@@ -125,7 +126,7 @@ def train(opt):
     for epoch in range(opt.max_epoch):
         if epoch > 0:
             scheduler.step(loss_total)
-    
+
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []
@@ -140,29 +141,30 @@ def train(opt):
                 data_input, label = data
 
                 # perform adversarial attack update to images
-                if opt.test_mode == "fgsm":
+                if opt.train_mode == "fgsm":
                     data_input = fgsm(
                         model, data_input, label, 8. / 255, device)
-                elif opt.test_mode == "bim":
+                elif opt.train_mode == "bim":
                     data_input = bim(
                         model, data_input, label, 8. / 255, 2. / 255, 7, device)
-                elif opt.test_mode == "pgd_7":
+                elif opt.train_mode == "pgd_7":
                     data_input = pgd(
                         model, data_input, label, 8. / 255, 2. / 255, 7, device)
-                elif opt.test_mode == "pgd_20":
+                elif opt.train_mode == "pgd_20":
                     data_input = pgd(
                         model, data_input, label, 8. / 255, 2. / 255, 20, device)
-                elif opt.test_mode == "mim":
+                elif opt.train_mode == "mim":
                     data_input = mim(
                         model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+                elif opt.train_mode == "cw":
+                    data_input = cw(model, data_input, label, 1,
+                                0.15, 100, 0.001, device, ii)
                 else:
                     pass
 
-                # normalize input images
+                # get feature embedding from resnet and prediction
                 data_input = data_input.to(device)
                 label = label.to(device).long()
-
-                # get feature embedding from resnet and prediction
                 output = model(data_input, label)
 
                 # get loss
@@ -185,10 +187,9 @@ def train(opt):
                 if ii == len(data_loaders[phase]) - 1:
                     acc = np.sum(np.concatenate(
                         acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-
                     print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.4f}".format(
                         phase, epoch, np.average(loss_accum), acc, optimizer.param_groups[0]['lr']))
-                        
+
                     if phase == "train":
                         loss_total = np.mean(loss_accum)
 
@@ -198,25 +199,26 @@ def train(opt):
                         if acc > best_val_acc:
                             print("val accuracy improved: {:.6f} to {:.6f} ({:.6f})\n".format(
                                 best_val_acc, acc, acc - best_val_acc))
-
                             curr_patience = 0
                             best_val_acc = acc
                             best_epoch = epoch
-                            save_model(model, opt.dataset, opt.train_mode,
-                                       opt.metric, opt.backbone)
+                            if opt.test_bb:
+                                save_model(model, opt.dataset + "_bb", opt.train_mode,
+                                        opt.metric, opt.backbone)
+                            else:
+                                save_model(model, opt.dataset, opt.train_mode,
+                                           opt.metric, opt.backbone)
 
                         else:
                             print("val accuracy not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(
                                 best_val_acc, acc, best_val_acc - acc))
-
                             curr_patience += 1
 
                         # terminate model if earlystopping patience exceeded
                         if curr_patience > opt.patience:
                             print("converged after {} epochs, loading best model from epoch {}".format(
                                 epoch, best_epoch))
-
-                            return best_val_acc
+                            return
 
 
 if __name__ == "__main__":
@@ -224,4 +226,13 @@ if __name__ == "__main__":
     opt = Config()
 
     # perform training using arguments
-    best_val_acc = train(opt)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    opt.test_bb = False
+    train(opt)
+
+    # perform training of second model to use for black box attack
+    np.random.seed(24)
+    torch.manual_seed(24)
+    opt.test_bb = True
+    train(opt)
