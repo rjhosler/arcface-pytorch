@@ -7,13 +7,13 @@ class Config(object):
     test_restarts = 1  # 1 (for all but 20PGD col), 20
     test_bb = False  # True, False, test using black box attack
 
-    metric = "arcface"  # softmax, arcface, cosface, sphereface
+    metric = "triplet"  # softmax, arcface, cosface, sphereface, triplet
     m = 0.15
     s = 4
 
     val_split = 0.1
     batch_size = 256
-    epoch = 500
+    epoch = 1000
 
     scheduler = "dynamic"  # decay, dynamic, cycle
     optimizer = "sgd"

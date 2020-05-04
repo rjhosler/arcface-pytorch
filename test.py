@@ -1,10 +1,7 @@
-import os
 import numpy as np
 from sklearn.metrics import classification_report, accuracy_score
 import torch
-from torch.nn import DataParallel, CrossEntropyLoss
-from torch.nn.functional import normalize
-from torch.optim import lr_scheduler, SGD, Adam
+from torch.nn import DataParallel
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
@@ -68,51 +65,51 @@ def test(opt):
     acc_accum = []
     for ii, data in enumerate(test_loader):
         # load data batch to device
-        data_input, label = data
-        output = label.cpu().numpy()
+        images, labels = data
+        predictions = labels.cpu().numpy()
 
         # random restarts for pgd attack
         for restart_cnt in range(opt.test_restarts):
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
-                data_input = fgsm(
-                    attack_model, data_input, label, 8. / 255, device)
+                images = fgsm(
+                    attack_model, images, labels, 8. / 255, device)
             elif opt.test_mode == "bim":
-                data_input = bim(
-                    attack_model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                images = bim(
+                    attack_model, images, labels, 8. / 255, 2. / 255, 7, device)
             elif opt.test_mode == "pgd_7":
-                data_input = pgd(
-                    attack_model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                images = pgd(
+                    attack_model, images, labels, 8. / 255, 2. / 255, 7, device)
             elif opt.test_mode == "pgd_20":
-                data_input = pgd(
-                    attack_model, data_input, label, 8. / 255, 2. / 255, 20, device)
+                images = pgd(
+                    attack_model, images, labels, 8. / 255, 2. / 255, 20, device)
             elif opt.test_mode == "mim":
-                data_input = mim(
-                    attack_model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+                images = mim(
+                    attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40, device)
             elif opt.test_mode == "cw":
-                data_input = cw(attack_model, data_input, label, 1,
-                                0.15, 100, 0.001, device, ii)
+                images = cw(attack_model, images, labels,
+                            1, 0.15, 100, 0.001, device, ii)
             else:
                 pass
 
-            # normalize input images
-            data_input = data_input.to(device)
-            label = label.to(device).long()
+            # put input images and labels on device
+            images = images.to(device)
+            labels = labels.to(device).long()
 
             # get feature embedding from resnet and prediction
-            output_i = model(data_input, label)
+            predictions_i = model(images, labels)
 
             # accumulate test results
-            output_i = output_i.data.cpu().numpy()
-            output_i = np.argmax(output_i, axis=1)
-            label_i = label.data.cpu().numpy()
+            predictions_i = predictions_i.data.cpu().numpy()
+            predictions_i = np.argmax(predictions_i, axis=1)
+            label_i = labels.data.cpu().numpy()
 
-            output[np.where(output_i != label_i)
-                   ] = output_i[np.where(output_i != label_i)]
+            predictions[np.where(predictions_i != label_i)
+                        ] = predictions_i[np.where(predictions_i != label_i)]
 
-        y_true.append(label.cpu().numpy())
-        y_pred.append(output)
-        acc_accum.append(output == label.cpu().numpy())
+        y_true.append(labels.cpu().numpy())
+        y_pred.append(predictions)
+        acc_accum.append(predictions == labels.cpu().numpy())
 
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))

@@ -1,8 +1,7 @@
-import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from torch.nn import CrossEntropyLoss, DataParallel
+from torch.nn import CrossEntropyLoss
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -115,12 +114,7 @@ def train(opt):
             optimizer, factor=0.1, patience=10)
 
     # train/val loop
-    best_val_acc = -np.inf
-    best_epoch = 0
     for epoch in range(opt.max_epoch):
-        if epoch > 0:
-            scheduler.step(loss_total)
-
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []
@@ -132,28 +126,29 @@ def train(opt):
 
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
-                data_input, label = data
+                images, labels = data
 
                 # get feature embedding from resnet and prediction
-                data_input = data_input.to(device)
-                label = label.to(device).long()
-                
-                features = model.feature(data_input)
-                output = model(data_input, label)
-
-                # get cross-entropy loss (only considering anchor examples)
-                ce_loss = criterion(output, label)
+                images = images.to(device)
+                labels = labels.to(device).long()
+                features = model.feature(images)
 
                 # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
                 tpl_loss, _, mask = batch_all_triplet_loss(
-                    label, features, margin)
+                    labels, features, margin)
 
-                # get feature norm loss 
+                # get feature norm loss
                 norm = features.mm(features.t()).diag()
                 norm_loss = norm[mask.nonzero()[0]] + \
                     norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
                 norm_loss = torch.sum(norm_loss) / mask.nonzero()[0].shape[0]
-                
+
+                # get cross-entropy loss (only considering anchor examples)
+                anchor_images = images[np.unique(mask.nonzero()[0])]
+                anchor_labels = labels[np.unique(mask.nonzero()[0])]
+                predictions = model(anchor_images, anchor_labels)
+                ce_loss = criterion(predictions, anchor_labels)
+
                 # combine cross-entropy loss, triplet loss and feature norm lossusing lambda weights
                 loss = ce_loss + lambda_loss[0] * \
                     tpl_loss + lambda_loss[1] * norm_loss
@@ -165,10 +160,10 @@ def train(opt):
                     optimizer.step()
 
                 # accumulate train or val results
-                output = output.data.cpu().numpy()
-                output = np.argmax(output, axis=1)
-                label = label.data.cpu().numpy()
-                acc_accum.append(output == label)
+                predictions = predictions.data.cpu().numpy()
+                predictions = np.argmax(predictions, axis=1)
+                anchor_labels = anchor_labels.data.cpu().numpy()
+                acc_accum.append(predictions == anchor_labels)
                 loss_accum.append(loss.item())
 
                 # print accumulated train/val results at end of epoch
@@ -180,47 +175,14 @@ def train(opt):
 
                     if phase == "train":
                         loss_total = np.mean(loss_accum)
+                        scheduler.step(loss_total)
+                    else:
+                        print("")
 
-                    # check earlystopping convergence critera
-                    if phase == "val":
-                        # save model to checkpoints dir if training improved val acc, update curr_patience
-                        if acc > best_val_acc:
-                            print("val accuracy improved: {:.6f} to {:.6f} ({:.6f})\n".format(
-                                best_val_acc, acc, acc - best_val_acc))
-                            curr_patience = 0
-                            best_val_acc = acc
-                            best_epoch = epoch
-                            if opt.test_bb:
-                                save_model(model, opt.dataset + "_bb", opt.train_mode,
-                                           opt.metric, opt.backbone)
-                            else:
-                                save_model(model, opt.dataset, opt.train_mode,
-                                           opt.metric, opt.backbone)
-
-                        else:
-                            print("val accuracy not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(
-                                best_val_acc, acc, best_val_acc - acc))
-                            curr_patience += 1
-
-                        # terminate model if earlystopping patience exceeded
-                        if curr_patience > opt.patience:
-                            print("converged after {} epochs, loading best model from epoch {}".format(
-                                epoch, best_epoch))
-                            return
-
-
-if __name__ == "__main__":
-    # load in arguments defined in config/config.py
-    opt = Config()
-
-    # perform training using arguments
-    np.random.seed(42)
-    torch.manual_seed(42)
-    opt.test_bb = False
-    train(opt)
-
-    # perform training of second model to use for black box attack
-    np.random.seed(24)
-    torch.manual_seed(24)
-    opt.test_bb = True
-    train(opt)
+    # save model after training for opt.epoch
+    if opt.test_bb:
+        save_model(model, opt.dataset + "_bb", opt.train_mode,
+                   opt.metric, opt.backbone)
+    else:
+        save_model(model, opt.dataset, opt.train_mode,
+                   opt.metric, opt.backbone)

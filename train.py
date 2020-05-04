@@ -13,6 +13,7 @@ from models.utils import save_model, load_model
 from models.metrics import Softmax, AAML, LMCL, AMSL
 from models.attacks import fgsm, bim, pgd, mim, cw
 from models.resnet_cifar import resnet18, resnet34
+from train_triplet import train as triplet_train
 
 
 np.random.seed(42)
@@ -133,37 +134,37 @@ def train(opt):
 
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
-                data_input, label = data
+                images, labels = data
 
                 # perform adversarial attack update to images
                 if opt.train_mode == "fgsm":
-                    data_input = fgsm(
-                        model, data_input, label, 8. / 255, device)
+                    images = fgsm(
+                        model, images, labels, 8. / 255, device)
                 elif opt.train_mode == "bim":
-                    data_input = bim(
-                        model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                    images = bim(
+                        model, images, labels, 8. / 255, 2. / 255, 7, device)
                 elif opt.train_mode == "pgd_7":
-                    data_input = pgd(
-                        model, data_input, label, 8. / 255, 2. / 255, 7, device)
+                    images = pgd(
+                        model, images, labels, 8. / 255, 2. / 255, 7, device)
                 elif opt.train_mode == "pgd_20":
-                    data_input = pgd(
-                        model, data_input, label, 8. / 255, 2. / 255, 20, device)
+                    images = pgd(
+                        model, images, labels, 8. / 255, 2. / 255, 20, device)
                 elif opt.train_mode == "mim":
-                    data_input = mim(
-                        model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
+                    images = mim(
+                        model, images, labels, 8. / 255, 2. / 255, 0.9, 40, device)
                 elif opt.train_mode == "cw":
-                    data_input = cw(model, data_input, label, 1,
+                    images = cw(model, images, labels, 1,
                                 0.15, 100, 0.001, device, ii)
                 else:
                     pass
 
                 # get feature embedding from resnet and prediction
-                data_input = data_input.to(device)
-                label = label.to(device).long()
-                output = model(data_input, label)
+                images = images.to(device)
+                labels = labels.to(device).long()
+                predictions = model(images, labels)
 
                 # get loss
-                loss = criterion(output, label)
+                loss = criterion(predictions, labels)
                 optimizer.zero_grad()
 
                 # only take step if in train phase
@@ -172,10 +173,10 @@ def train(opt):
                     optimizer.step()
 
                 # accumulate train or val results
-                output = output.data.cpu().numpy()
-                output = np.argmax(output, axis=1)
-                label = label.data.cpu().numpy()
-                acc_accum.append(output == label)
+                predictions = predictions.data.cpu().numpy()
+                predictions = np.argmax(predictions, axis=1)
+                labels = labels.data.cpu().numpy()
+                acc_accum.append(predictions == labels)
                 loss_accum.append(loss.item())
 
                 # print accumulated train/val results at end of epoch
@@ -188,28 +189,44 @@ def train(opt):
                     if phase == "train":
                         loss_total = np.mean(loss_accum)
                         scheduler.step(loss_total)
-    
+                    else:
+                        print("")
+
     # save model after training for opt.epoch
     if opt.test_bb:
         save_model(model, opt.dataset + "_bb", opt.train_mode,
-                opt.metric, opt.backbone)
+                   opt.metric, opt.backbone)
     else:
         save_model(model, opt.dataset, opt.train_mode,
-                    opt.metric, opt.backbone)
+                   opt.metric, opt.backbone)
 
 
 if __name__ == "__main__":
     # load in arguments defined in config/config.py
     opt = Config()
 
-    # perform training using arguments
-    np.random.seed(42)
-    torch.manual_seed(42)
-    opt.test_bb = False
-    train(opt)
+    if opt.metric == "triplet":
+        # perform training using arguments
+        np.random.seed(42)
+        torch.manual_seed(42)
+        opt.test_bb = False
+        triplet_train(opt)
 
-    # perform training of second model to use for black box attack
-    np.random.seed(24)
-    torch.manual_seed(24)
-    opt.test_bb = True
-    train(opt)
+        # perform training of second model to use for black box attack
+        np.random.seed(24)
+        torch.manual_seed(24)
+        opt.test_bb = True
+        triplet_train(opt)
+
+    else:
+        # perform training using arguments
+        np.random.seed(42)
+        torch.manual_seed(42)
+        opt.test_bb = False
+        train(opt)
+
+        # perform training of second model to use for black box attack
+        np.random.seed(24)
+        torch.manual_seed(24)
+        opt.test_bb = True
+        train(opt)

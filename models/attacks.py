@@ -1,10 +1,15 @@
+import numpy as np
 import torch
-from torch.nn import CrossEntropyLoss
-import torch.optim as optim
 import torch.nn as nn
+import torch.optim as optim
+
+
+np.random.seed(42)
+torch.manual_seed(42)
+
 
 def fgsm(model, images, labels, eps, device):
-    loss = CrossEntropyLoss()
+    loss = nn.CrossEntropyLoss()
 
     images = images.to(device)
     labels = labels.to(device)
@@ -24,7 +29,7 @@ def fgsm(model, images, labels, eps, device):
 
 
 def bim(model, images, labels, eps, alpha, iters, device):
-    loss = CrossEntropyLoss()
+    loss = nn.CrossEntropyLoss()
 
     images = images.to(device)
     labels = labels.to(device)
@@ -41,8 +46,10 @@ def bim(model, images, labels, eps, alpha, iters, device):
         grad = images.grad.data.sign()
         adv_images = images + alpha * grad
         a = torch.clamp(images - eps, min=0)
-        b = (adv_images >= a).float() * adv_images + (a > adv_images).float() * a
-        c = (b > images + eps).float() * (images+eps) + (images+eps >= b).float() * b
+        b = (adv_images >= a).float() * \
+            adv_images + (a > adv_images).float() * a
+        c = (b > images + eps).float() * (images+eps) + \
+            (images+eps >= b).float() * b
         images = torch.clamp(c, max=1).detach()
 
     adv_images = images
@@ -51,7 +58,7 @@ def bim(model, images, labels, eps, alpha, iters, device):
 
 
 def mim(model, images, labels, eps, alpha, momemtum, iters, device):
-    loss = CrossEntropyLoss()
+    loss = nn.CrossEntropyLoss()
 
     images = images.to(device)
     labels = labels.to(device)
@@ -85,7 +92,7 @@ def mim(model, images, labels, eps, alpha, momemtum, iters, device):
 
 
 def pgd(model, images, labels, eps, alpha, iters, device):
-    loss = CrossEntropyLoss()
+    loss = nn.CrossEntropyLoss()
 
     images = images.to(device)
     labels = labels.to(device)
@@ -110,28 +117,29 @@ def pgd(model, images, labels, eps, alpha, iters, device):
 
     return images
 
+
 def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
 
-    images = images.to(device)     
+    images = images.to(device)
     labels = labels.to(device)
 
     # Define f-function
-    def f(x) :
+    def f(x):
         outputs = model(x, labels)
         one_hot_labels = torch.eye(len(outputs[0]))[labels].to(device)
 
         i, _ = torch.max((1-one_hot_labels)*outputs, dim=1)
         j = torch.masked_select(outputs, one_hot_labels.bool())
-        
+
         return torch.clamp(j-i, min=-kappa)
-    
+
     w = torch.zeros_like(images, requires_grad=True).to(device)
 
     optimizer = optim.Adam([w], lr=learning_rate)
 
     prev = 1e10
-    
-    for step in range(max_iter) :
+
+    for step in range(max_iter):
 
         a = 1/2*(nn.Tanh()(w) + 1)
 
@@ -145,13 +153,14 @@ def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
         optimizer.step()
 
         # Early Stop when loss does not converge.
-        if step % (max_iter//10) == 0 :
-            if cost > prev :
+        if step % (max_iter//10) == 0:
+            if cost > prev:
                 print('Attack Stopped due to CONVERGENCE....')
                 return a
             prev = cost
 
-        print('- Learning Progress : %2.2f %%, Iteration: %d        ' %((step+1)/max_iter*100, ii), end='\r')
+        print('- Learning Progress : %2.2f %%, Iteration: %d        ' %
+              ((step+1)/max_iter*100, ii), end='\r')
 
     attack_images = 1/2*(nn.Tanh()(w) + 1)
 
