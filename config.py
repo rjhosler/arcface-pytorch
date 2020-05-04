@@ -13,8 +13,7 @@ class Config(object):
 
     val_split = 0.1
     batch_size = 256
-    max_epoch = 500
-    patience = 500
+    epoch = 500
 
     scheduler = "dynamic"  # decay, dynamic, cycle
     optimizer = "sgd"

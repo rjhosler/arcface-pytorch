@@ -13,6 +13,7 @@ from models.utils import save_model, load_model
 from models.metrics import Softmax, AAML, LMCL, AMSL
 from models.attacks import fgsm, bim, pgd, mim, cw
 from models.resnet_cifar import resnet18, resnet34
+from models.triplet_loss import batch_all_triplet_loss
 
 
 np.random.seed(42)
@@ -39,11 +40,15 @@ def train(opt):
 
     # get CIFAR10/CIFAR100 train/val set
     if opt.dataset == "CIFAR10":
+        margin = 0.03
+        lambda_loss = [2, 0.001]
         train_set = CIFAR10(root="./data", train=True,
                             download=True, transform=transform_train)
         val_set = CIFAR10(root="./data", train=True,
                           download=True, transform=transform_val)
     else:
+        margin = 0.03
+        lambda_loss = [2, 0.001]
         train_set = CIFAR100(root="./data", train=True,
                              download=True, transform=transform_train)
         val_set = CIFAR100(root="./data", train=True,
@@ -81,20 +86,9 @@ def train(opt):
         model = resnet34(pretrained=False)
 
     # set metric loss function
-    if opt.metric == "arcface":
-        model.fc = AAML(
-            model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
-    elif opt.metric == "cosface":
-        model.fc = LMCL(
-            model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
-    elif opt.metric == "sphereface":
-        model.fc = AMSL(
-            model.fc.in_features, num_classes, device, m=opt.m)
-    else:
-        model.fc = Softmax(model.fc.in_features, num_classes)
+    model.fc = Softmax(model.fc.in_features, num_classes)
 
     model.to(device)
-    model = DataParallel(model)
 
     # set optimizer
     criterion = CrossEntropyLoss()
@@ -121,7 +115,12 @@ def train(opt):
             optimizer, factor=0.1, patience=10)
 
     # train/val loop
-    for epoch in range(opt.epoch):
+    best_val_acc = -np.inf
+    best_epoch = 0
+    for epoch in range(opt.max_epoch):
+        if epoch > 0:
+            scheduler.step(loss_total)
+
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []
@@ -135,35 +134,29 @@ def train(opt):
                 # load data batch to device
                 data_input, label = data
 
-                # perform adversarial attack update to images
-                if opt.train_mode == "fgsm":
-                    data_input = fgsm(
-                        model, data_input, label, 8. / 255, device)
-                elif opt.train_mode == "bim":
-                    data_input = bim(
-                        model, data_input, label, 8. / 255, 2. / 255, 7, device)
-                elif opt.train_mode == "pgd_7":
-                    data_input = pgd(
-                        model, data_input, label, 8. / 255, 2. / 255, 7, device)
-                elif opt.train_mode == "pgd_20":
-                    data_input = pgd(
-                        model, data_input, label, 8. / 255, 2. / 255, 20, device)
-                elif opt.train_mode == "mim":
-                    data_input = mim(
-                        model, data_input, label, 8. / 255, 2. / 255, 0.9, 40, device)
-                elif opt.train_mode == "cw":
-                    data_input = cw(model, data_input, label, 1,
-                                0.15, 100, 0.001, device, ii)
-                else:
-                    pass
-
                 # get feature embedding from resnet and prediction
                 data_input = data_input.to(device)
                 label = label.to(device).long()
+                
+                features = model.feature(data_input)
                 output = model(data_input, label)
 
-                # get loss
-                loss = criterion(output, label)
+                # get cross-entropy loss (only considering anchor examples)
+                ce_loss = criterion(output, label)
+
+                # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
+                tpl_loss, _, mask = batch_all_triplet_loss(
+                    label, features, margin)
+
+                # get feature norm loss 
+                norm = features.mm(features.t()).diag()
+                norm_loss = norm[mask.nonzero()[0]] + \
+                    norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
+                norm_loss = torch.sum(norm_loss) / mask.nonzero()[0].shape[0]
+                
+                # combine cross-entropy loss, triplet loss and feature norm lossusing lambda weights
+                loss = ce_loss + lambda_loss[0] * \
+                    tpl_loss + lambda_loss[1] * norm_loss
                 optimizer.zero_grad()
 
                 # only take step if in train phase
@@ -187,15 +180,33 @@ def train(opt):
 
                     if phase == "train":
                         loss_total = np.mean(loss_accum)
-                        scheduler.step(loss_total)
-    
-    # save model after training for opt.epoch
-    if opt.test_bb:
-        save_model(model, opt.dataset + "_bb", opt.train_mode,
-                opt.metric, opt.backbone)
-    else:
-        save_model(model, opt.dataset, opt.train_mode,
-                    opt.metric, opt.backbone)
+
+                    # check earlystopping convergence critera
+                    if phase == "val":
+                        # save model to checkpoints dir if training improved val acc, update curr_patience
+                        if acc > best_val_acc:
+                            print("val accuracy improved: {:.6f} to {:.6f} ({:.6f})\n".format(
+                                best_val_acc, acc, acc - best_val_acc))
+                            curr_patience = 0
+                            best_val_acc = acc
+                            best_epoch = epoch
+                            if opt.test_bb:
+                                save_model(model, opt.dataset + "_bb", opt.train_mode,
+                                           opt.metric, opt.backbone)
+                            else:
+                                save_model(model, opt.dataset, opt.train_mode,
+                                           opt.metric, opt.backbone)
+
+                        else:
+                            print("val accuracy not improved: {:.6f} to {:.6f}, (+{:.6f})\n".format(
+                                best_val_acc, acc, best_val_acc - acc))
+                            curr_patience += 1
+
+                        # terminate model if earlystopping patience exceeded
+                        if curr_patience > opt.patience:
+                            print("converged after {} epochs, loading best model from epoch {}".format(
+                                epoch, best_epoch))
+                            return
 
 
 if __name__ == "__main__":
