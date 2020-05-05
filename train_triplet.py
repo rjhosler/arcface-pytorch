@@ -114,7 +114,7 @@ def train(opt):
             optimizer, factor=0.1, patience=10)
 
     # train/val loop
-    for epoch in range(opt.max_epoch):
+    for epoch in range(opt.epoch):
         for phase in ["train", "val"]:
             acc_accum = []
             loss_accum = []

@@ -1,6 +1,11 @@
 import os
+import numpy as np
 import torch
 import torch.nn as nn
+
+
+np.random.seed(42)
+torch.manual_seed(42)
 
 
 __all__ = ["ResNet", "resnet18", "resnet34", "resnet50", "resnet101",

@@ -70,6 +70,8 @@ def test(opt):
 
         # random restarts for pgd attack
         for restart_cnt in range(opt.test_restarts):
+            print("Batch {}/{} -- Restart {}/{}".format(ii+1, len(test_loader), restart_cnt+1, opt.test_restarts))
+
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
                 images = fgsm(

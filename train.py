@@ -2,7 +2,7 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from torch.nn import CrossEntropyLoss, DataParallel
+from torch.nn import CrossEntropyLoss, MSELoss, DataParallel
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -40,11 +40,13 @@ def train(opt):
 
     # get CIFAR10/CIFAR100 train/val set
     if opt.dataset == "CIFAR10":
+        alp_lambda = 0.5
         train_set = CIFAR10(root="./data", train=True,
                             download=True, transform=transform_train)
         val_set = CIFAR10(root="./data", train=True,
                           download=True, transform=transform_val)
     else:
+        alp_lambda = 0.5
         train_set = CIFAR100(root="./data", train=True,
                              download=True, transform=transform_train)
         val_set = CIFAR100(root="./data", train=True,
@@ -99,6 +101,7 @@ def train(opt):
 
     # set optimizer
     criterion = CrossEntropyLoss()
+    mse_criterion = MSELoss(reduction="sum")
 
     # set LR scheduler
     if opt.scheduler == "decay":
@@ -124,8 +127,7 @@ def train(opt):
     # train/val loop
     for epoch in range(opt.epoch):
         for phase in ["train", "val"]:
-            acc_accum = []
-            loss_accum = []
+            total_examples, total_correct, total_loss = 0, 0, 0
 
             if phase == "train":
                 model.train()
@@ -137,35 +139,52 @@ def train(opt):
                 images, labels = data
 
                 # perform adversarial attack update to images
-                if opt.train_mode == "fgsm":
-                    images = fgsm(
-                        model, images, labels, 8. / 255, device)
-                elif opt.train_mode == "bim":
-                    images = bim(
+                if opt.train_mode == "at" or opt.train_mode == "alp":
+                    adv_images = pgd(
                         model, images, labels, 8. / 255, 2. / 255, 7, device)
-                elif opt.train_mode == "pgd_7":
-                    images = pgd(
-                        model, images, labels, 8. / 255, 2. / 255, 7, device)
-                elif opt.train_mode == "pgd_20":
-                    images = pgd(
-                        model, images, labels, 8. / 255, 2. / 255, 20, device)
-                elif opt.train_mode == "mim":
-                    images = mim(
-                        model, images, labels, 8. / 255, 2. / 255, 0.9, 40, device)
-                elif opt.train_mode == "cw":
-                    images = cw(model, images, labels, 1,
-                                0.15, 100, 0.001, device, ii)
                 else:
                     pass
+                
+                # at train mode prediction
+                if opt.train_mode == "at":
+                    adv_images = adv_images.to(device)
+                    labels = labels.to(device).long()
+                    predictions = model(adv_images, labels)
 
-                # get feature embedding from resnet and prediction
-                images = images.to(device)
-                labels = labels.to(device).long()
-                predictions = model(images, labels)
+                    # get loss
+                    loss = criterion(predictions, labels)
+                    optimizer.zero_grad()
 
-                # get loss
-                loss = criterion(predictions, labels)
-                optimizer.zero_grad()
+                # alp train mode prediction
+                elif opt.train_mode == "alp":
+                    images = images.to(device)
+                    adv_images = adv_images.to(device)
+                    labels = labels.to(device).long()
+
+                    # logits for clean and adversarial images
+                    predictions = model(images, labels)
+                    adv_predictions = model(adv_images, labels)
+
+                    # get ce loss
+                    ce_loss = criterion(adv_predictions, labels)
+
+                    # get alp loss
+                    alp_loss = mse_criterion(
+                        adv_predictions, predictions) / adv_predictions.size(0)
+
+                    # get overall loss
+                    loss = ce_loss + alp_lambda * alp_loss
+                    optimizer.zero_grad()
+
+                # clean train mode prediction
+                else:
+                    images = images.to(device)
+                    labels = labels.to(device).long()
+                    predictions = model(images, labels)
+
+                    # get loss
+                    loss = criterion(predictions, labels)
+                    optimizer.zero_grad()
 
                 # only take step if in train phase
                 if phase == "train":
@@ -173,22 +192,21 @@ def train(opt):
                     optimizer.step()
 
                 # accumulate train or val results
-                predictions = predictions.data.cpu().numpy()
-                predictions = np.argmax(predictions, axis=1)
-                labels = labels.data.cpu().numpy()
-                acc_accum.append(predictions == labels)
-                loss_accum.append(loss.item())
+                predictions = torch.argmax(predictions, 1)
+                total_examples += predictions.size(0)
+                total_correct += predictions.eq(labels).sum().item()
+                total_loss += loss.item()
 
                 # print accumulated train/val results at end of epoch
                 if ii == len(data_loaders[phase]) - 1:
-                    acc = np.sum(np.concatenate(
-                        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
+                    acc = total_correct / total_examples
+                    loss = total_loss / len(data_loaders[phase])
                     print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.4f}".format(
-                        phase, epoch, np.average(loss_accum), acc, optimizer.param_groups[0]['lr']))
+                        phase, epoch, loss, acc, optimizer.param_groups[0]['lr']))
 
                     if phase == "train":
-                        loss_total = np.mean(loss_accum)
-                        scheduler.step(loss_total)
+                        loss = total_loss / len(data_loaders[phase])
+                        scheduler.step(loss)
                     else:
                         print("")
 
