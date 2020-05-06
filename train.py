@@ -101,7 +101,7 @@ def train(opt):
 
     # set optimizer
     criterion = CrossEntropyLoss()
-    mse_criterion = MSELoss(reduction="sum")
+    mse_criterion = MSELoss()
 
     # set LR scheduler
     if opt.scheduler == "decay":
@@ -137,6 +137,8 @@ def train(opt):
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
                 images, labels = data
+                images = images.to(device)
+                labels = labels.to(device).long()
 
                 # perform adversarial attack update to images
                 if opt.train_mode == "at" or opt.train_mode == "alp":
@@ -147,20 +149,18 @@ def train(opt):
                 
                 # at train mode prediction
                 if opt.train_mode == "at":
-                    adv_images = adv_images.to(device)
-                    labels = labels.to(device).long()
-                    predictions = model(adv_images, labels)
+                    # logits for adversarial images
+                    adv_predictions = model(adv_images, labels)
 
                     # get loss
-                    loss = criterion(predictions, labels)
+                    loss = criterion(adv_predictions, labels)
                     optimizer.zero_grad()
+
+                    # for result accumulation
+                    predictions = adv_predictions
 
                 # alp train mode prediction
                 elif opt.train_mode == "alp":
-                    images = images.to(device)
-                    adv_images = adv_images.to(device)
-                    labels = labels.to(device).long()
-
                     # logits for clean and adversarial images
                     predictions = model(images, labels)
                     adv_predictions = model(adv_images, labels)
@@ -169,17 +169,18 @@ def train(opt):
                     ce_loss = criterion(adv_predictions, labels)
 
                     # get alp loss
-                    alp_loss = mse_criterion(
-                        adv_predictions, predictions) / adv_predictions.size(0)
+                    alp_loss = mse_criterion(adv_predictions, predictions)
 
                     # get overall loss
                     loss = ce_loss + alp_lambda * alp_loss
                     optimizer.zero_grad()
 
+                    # for result accumulation
+                    predictions = adv_predictions
+
                 # clean train mode prediction
                 else:
-                    images = images.to(device)
-                    labels = labels.to(device).long()
+                    # logits for clean images
                     predictions = model(images, labels)
 
                     # get loss

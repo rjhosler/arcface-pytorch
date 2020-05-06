@@ -2,12 +2,12 @@ class Config(object):
     env = "default"
     dataset = "CIFAR10"  # CIFAR10, CIFAR100, tiny_imagenet
     backbone = "resnet18"  # resnet18, resnet34
-    train_mode = "clean"  # clean, at, alp
+    train_mode = "alp"  # clean, at, alp
     test_mode = "clean"  # clean, fgsm, bim, pgd_7, pgd_20, mim, cw
     test_restarts = 1  # 1 (for all but 20PGD col), 20
     test_bb = False  # True, False, test using black box attack
 
-    metric = "arcface"  # softmax, arcface, cosface, sphereface, triplet
+    metric = "triplet"  # softmax, arcface, cosface, sphereface, triplet
     m = 0.15
     s = 4
 

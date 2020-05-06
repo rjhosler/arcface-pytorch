@@ -94,9 +94,6 @@ def mim(model, images, labels, eps, alpha, momemtum, iters, device):
 def pgd(model, images, labels, eps, alpha, iters, device):
     loss = nn.CrossEntropyLoss()
 
-    images = images.to(device)
-    labels = labels.to(device)
-
     ori_images = images.data
     images = images + \
         torch.FloatTensor(images.shape).uniform_(-eps, eps).to(device)
