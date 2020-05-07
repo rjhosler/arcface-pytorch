@@ -135,7 +135,7 @@ def train(opt):
                 # perform adversarial attack update to images
                 if opt.train_mode == "at" or opt.train_mode == "alp":
                     adv_images = pgd(
-                        model, images, labels, 8. / 255, 2. / 255, 7, device)
+                        model, images, labels, 8. / 255, 2. / 255, 7)
                 else:
                     pass
 
@@ -158,7 +158,8 @@ def train(opt):
                         mask.nonzero()[0].shape[0]
 
                     # get cross-entropy loss (only adv considering anchor examples)
-                    adv_anchor_images = adv_images[np.unique(mask.nonzero()[0])]
+                    adv_anchor_images = adv_images[np.unique(
+                        mask.nonzero()[0])]
                     anchor_labels = labels[np.unique(mask.nonzero()[0])]
                     adv_predictions = model(adv_anchor_images, anchor_labels)
                     ce_loss = criterion(adv_predictions, anchor_labels)
@@ -170,7 +171,7 @@ def train(opt):
 
                     # for result accumulation
                     predictions = adv_predictions
-                
+
                 # alp train mode prediction
                 elif opt.train_mode == "alp":
                     # get feature embedding from resnet and prediction
@@ -225,7 +226,8 @@ def train(opt):
                     norm = features.mm(features.t()).diag()
                     norm_loss = norm[mask.nonzero()[0]] + \
                         norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
-                    norm_loss = torch.sum(norm_loss) / mask.nonzero()[0].shape[0]
+                    norm_loss = torch.sum(norm_loss) / \
+                        mask.nonzero()[0].shape[0]
 
                     # get cross-entropy loss (only considering anchor examples)
                     anchor_images = images[np.unique(mask.nonzero()[0])]

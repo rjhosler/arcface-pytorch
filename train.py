@@ -143,10 +143,10 @@ def train(opt):
                 # perform adversarial attack update to images
                 if opt.train_mode == "at" or opt.train_mode == "alp":
                     adv_images = pgd(
-                        model, images, labels, 8. / 255, 2. / 255, 7, device)
+                        model, images, labels, 8. / 255, 2. / 255, 7)
                 else:
                     pass
-                
+
                 # at train mode prediction
                 if opt.train_mode == "at":
                     # logits for adversarial images

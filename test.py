@@ -62,63 +62,55 @@ def test(opt):
 
     # get prediction results for model
     y_true, y_pred = [], []
-    acc_accum = []
     for ii, data in enumerate(test_loader):
         # load data batch to device
         images, labels = data
+        images = images.to(device)
+        labels = labels.to(device).long()
         predictions = labels.cpu().numpy()
 
         # random restarts for pgd attack
         for restart_cnt in range(opt.test_restarts):
-            print("Batch {}/{} -- Restart {}/{}".format(ii+1, len(test_loader), restart_cnt+1, opt.test_restarts))
+            print("Batch {}/{} -- Restart {}/{}\t\t\t\t".format(ii+1,
+                                                        len(test_loader), restart_cnt+1, opt.test_restarts))
 
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
                 images = fgsm(
-                    attack_model, images, labels, 8. / 255, device)
+                    attack_model, images, labels, 8. / 255)
             elif opt.test_mode == "bim":
                 images = bim(
-                    attack_model, images, labels, 8. / 255, 2. / 255, 7, device)
+                    attack_model, images, labels, 8. / 255, 2. / 255, 7)
             elif opt.test_mode == "pgd_7":
                 images = pgd(
-                    attack_model, images, labels, 8. / 255, 2. / 255, 7, device)
+                    attack_model, images, labels, 8. / 255, 2. / 255, 7)
             elif opt.test_mode == "pgd_20":
                 images = pgd(
-                    attack_model, images, labels, 8. / 255, 2. / 255, 20, device)
+                    attack_model, images, labels, 8. / 255, 2. / 255, 20)
             elif opt.test_mode == "mim":
                 images = mim(
-                    attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40, device)
+                    attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40)
             elif opt.test_mode == "cw":
                 images = cw(attack_model, images, labels,
                             1, 0.15, 100, 0.001, device, ii)
             else:
                 pass
 
-            # put input images and labels on device
-            images = images.to(device)
-            labels = labels.to(device).long()
-
             # get feature embedding from resnet and prediction
             predictions_i = model(images, labels)
 
             # accumulate test results
-            predictions_i = predictions_i.data.cpu().numpy()
-            predictions_i = np.argmax(predictions_i, axis=1)
-            label_i = labels.data.cpu().numpy()
-
-            predictions[np.where(predictions_i != label_i)
-                        ] = predictions_i[np.where(predictions_i != label_i)]
+            predictions_i = torch.argmax(predictions_i, 1).cpu().numpy()
+            labels_i = labels.cpu().numpy()
+            predictions[np.where(predictions_i != labels_i)
+                        ] = predictions_i[np.where(predictions_i != labels_i)]
 
         y_true.append(labels.cpu().numpy())
         y_pred.append(predictions)
-        acc_accum.append(predictions == labels.cpu().numpy())
 
     y_true, y_pred = np.concatenate(y_true), np.concatenate(y_pred)
     print(classification_report(y_true, y_pred))
-
-    acc_accum = np.sum(np.concatenate(
-        acc_accum).astype(int)) / np.concatenate(acc_accum).astype(int).shape[0]
-    print("Accuracy: {}".format(acc_accum))
+    print("Accuracy: {}".format(accuracy_score(y_true, y_pred)))
     return y_true, y_pred
 
 

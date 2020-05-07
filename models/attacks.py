@@ -8,16 +8,14 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 
-def fgsm(model, images, labels, eps, device):
+def fgsm(model, images, labels, eps):
     loss = nn.CrossEntropyLoss()
 
-    images = images.to(device)
-    labels = labels.to(device)
     images.requires_grad = True
 
     outputs = model(images, labels)
 
-    cost = loss(outputs, labels).to(device)
+    cost = loss(outputs, labels)
     model.zero_grad()
     cost.backward()
 
@@ -28,18 +26,15 @@ def fgsm(model, images, labels, eps, device):
     return adv_images
 
 
-def bim(model, images, labels, eps, alpha, iters, device):
+def bim(model, images, labels, eps, alpha, iters):
     loss = nn.CrossEntropyLoss()
-
-    images = images.to(device)
-    labels = labels.to(device)
 
     for i in range(iters):
         images.requires_grad = True
 
         outputs = model(images, labels)
 
-        cost = loss(outputs, labels).to(device)
+        cost = loss(outputs, labels)
         model.zero_grad()
         cost.backward()
 
@@ -57,11 +52,9 @@ def bim(model, images, labels, eps, alpha, iters, device):
     return adv_images
 
 
-def mim(model, images, labels, eps, alpha, momemtum, iters, device):
+def mim(model, images, labels, eps, alpha, momemtum, iters):
     loss = nn.CrossEntropyLoss()
 
-    images = images.to(device)
-    labels = labels.to(device)
     grad_prev = torch.zeros_like(images)
 
     for i in range(iters):
@@ -69,7 +62,7 @@ def mim(model, images, labels, eps, alpha, momemtum, iters, device):
 
         outputs = model(images, labels)
 
-        cost = loss(outputs, labels).to(device)
+        cost = loss(outputs, labels)
         model.zero_grad()
         cost.backward()
 
@@ -91,19 +84,19 @@ def mim(model, images, labels, eps, alpha, momemtum, iters, device):
     return adv_images
 
 
-def pgd(model, images, labels, eps, alpha, iters, device):
+def pgd(model, images, labels, eps, alpha, iters):
     loss = nn.CrossEntropyLoss()
 
     ori_images = images.data
     images = images + \
-        torch.FloatTensor(images.shape).uniform_(-eps, eps).to(device)
+        torch.FloatTensor(images.shape).uniform_(-eps, eps)
 
     for i in range(iters):
         images.requires_grad = True
 
         outputs = model(images, labels)
 
-        cost = loss(outputs, labels).to(device)
+        cost = loss(outputs, labels)
         model.zero_grad()
         cost.backward()
 
@@ -116,10 +109,6 @@ def pgd(model, images, labels, eps, alpha, iters, device):
 
 
 def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
-
-    images = images.to(device)
-    labels = labels.to(device)
-
     # Define f-function
     def f(x):
         outputs = model(x, labels)
@@ -140,7 +129,7 @@ def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
 
         a = 1/2*(nn.Tanh()(w) + 1)
 
-        loss1 = nn.MSELoss(reduction='sum')(a, images)
+        loss1 = nn.MSELoss(reduction="sum")(a, images)
         loss2 = torch.sum(c*f(a))
 
         cost = loss1 + loss2
@@ -152,12 +141,12 @@ def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
         # Early Stop when loss does not converge.
         if step % (max_iter//10) == 0:
             if cost > prev:
-                print('Attack Stopped due to CONVERGENCE....')
+                print("Attack Stopped due to CONVERGENCE....")
                 return a
             prev = cost
 
-        print('- Learning Progress : %2.2f %%, Iteration: %d        ' %
-              ((step+1)/max_iter*100, ii), end='\r')
+        print("- Learning Progress : %2.2f %%, Iteration: %d\t\t\t\t" %
+              ((step+1)/max_iter*100, ii), end="\r")
 
     attack_images = 1/2*(nn.Tanh()(w) + 1)
 
