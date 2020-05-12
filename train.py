@@ -23,7 +23,7 @@ torch.manual_seed(42)
 def train(opt):
     # set device to cpu/gpu
     if opt.use_gpu == True:
-        device = torch.device("cuda")
+        device = torch.device("cuda", opt.gpu_id)
     else:
         device = torch.device("cpu")
 

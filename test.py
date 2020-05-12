@@ -17,7 +17,7 @@ torch.manual_seed(42)
 def test(opt):
     # set device to cpu/gpu
     if opt.use_gpu == True:
-        device = torch.device("cuda")
+        device = torch.device("cuda", opt.gpu_id)
     else:
         device = torch.device("cpu")
 
@@ -72,7 +72,7 @@ def test(opt):
         # random restarts for pgd attack
         for restart_cnt in range(opt.test_restarts):
             print("Batch {}/{} -- Restart {}/{}\t\t\t\t".format(ii+1,
-                                                        len(test_loader), restart_cnt+1, opt.test_restarts))
+                                                                len(test_loader), restart_cnt+1, opt.test_restarts))
 
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
@@ -92,7 +92,7 @@ def test(opt):
                     attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40)
             elif opt.test_mode == "cw":
                 images = cw(attack_model, images, labels,
-                            1, 0.15, 100, 0.001, device, ii)
+                            1, 0.15, 100, 0.001, ii)
             else:
                 pass
 

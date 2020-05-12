@@ -22,7 +22,7 @@ torch.manual_seed(42)
 def train(opt):
     # set device to cpu/gpu
     if opt.use_gpu == True:
-        device = torch.device("cuda")
+        device = torch.device("cuda", opt.gpu_id)
     else:
         device = torch.device("cpu")
 
@@ -171,6 +171,7 @@ def train(opt):
 
                     # for result accumulation
                     predictions = adv_predictions
+                    labels = anchor_labels
 
                 # alp train mode prediction
                 elif opt.train_mode == "alp":
@@ -212,6 +213,7 @@ def train(opt):
 
                     # for result accumulation
                     predictions = adv_predictions
+                    labels = anchor_labels
 
                 # clean train mode prediction
                 else:
@@ -239,6 +241,9 @@ def train(opt):
                     loss = ce_loss + lambda_loss[0] * \
                         tpl_loss + lambda_loss[1] * norm_loss
                     optimizer.zero_grad()
+
+                    # for result accumulation
+                    labels = anchor_labels
 
                 # only take step if in train phase
                 if phase == "train":

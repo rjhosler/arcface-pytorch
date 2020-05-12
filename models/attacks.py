@@ -89,7 +89,7 @@ def pgd(model, images, labels, eps, alpha, iters):
 
     ori_images = images.data
     images = images + \
-        torch.FloatTensor(images.shape).uniform_(-eps, eps)
+        torch.FloatTensor(images.shape).uniform_(-eps, eps).to(images.device)
 
     for i in range(iters):
         images.requires_grad = True
@@ -108,18 +108,18 @@ def pgd(model, images, labels, eps, alpha, iters):
     return images
 
 
-def cw(model, images, labels, c, kappa, max_iter, learning_rate, device, ii):
+def cw(model, images, labels, c, kappa, max_iter, learning_rate, ii):
     # Define f-function
     def f(x):
         outputs = model(x, labels)
-        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(device)
+        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(images.device)
 
         i, _ = torch.max((1-one_hot_labels)*outputs, dim=1)
         j = torch.masked_select(outputs, one_hot_labels.bool())
 
         return torch.clamp(j-i, min=-kappa)
 
-    w = torch.zeros_like(images, requires_grad=True).to(device)
+    w = torch.zeros_like(images, requires_grad=True).to(images.device)
 
     optimizer = optim.Adam([w], lr=learning_rate)
 

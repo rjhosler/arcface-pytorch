@@ -25,5 +25,5 @@ class Config(object):
     weight_decay = 0.0002
 
     use_gpu = True
-    gpu_id = "0"
+    gpu_id = 0
     num_workers = 2
