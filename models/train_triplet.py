@@ -77,7 +77,7 @@ def train(opt):
     data_loaders = {"train": train_loader, "val": val_loader}
 
     print("Dataset -- {}, Metric -- {}, Train Mode -- {}, Backbone -- {}".format(opt.dataset,
-                                                                        opt.metric, opt.train_mode, opt.backbone))
+                                                                                 opt.metric, opt.train_mode, opt.backbone))
     print("Train iteration batch size: {}".format(opt.batch_size))
     print("Train iterations per epoch: {}".format(len(train_loader)))
 
@@ -103,7 +103,7 @@ def train(opt):
                         lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
     else:
         optimizer = Adam([{"params": model.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay)
+                         lr=opt.lr, weight_decay=opt.weight_decay)
     if opt.scheduler == "decay":
         scheduler = lr_scheduler.StepLR(
             optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
@@ -135,7 +135,7 @@ def train(opt):
                 else:
                     pass
 
-                 # at train mode prediction
+                 # at train mode
                 if opt.train_mode == "at":
                     # get feature embedding from resnet
                     features, _ = model(images, labels)
@@ -151,7 +151,8 @@ def train(opt):
                     norm_loss = adv_norm[mask.nonzero(
                     )[0]] + norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
                     norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                        (mask.nonzero()[0].shape[0] + mask.nonzero()
+                         [1].shape[0] + mask.nonzero()[2].shape[0])
 
                     # get cross-entropy loss (only adv considering anchor examples)
                     adv_anchor_predictions = adv_predictions[np.unique(
@@ -168,7 +169,7 @@ def train(opt):
                     predictions = adv_anchor_predictions
                     labels = anchor_labels
 
-                # alp train mode prediction
+                # alp train mode
                 elif opt.train_mode == "alp":
                     # get feature embedding from resnet
                     features, predictions = model(images, labels)
@@ -184,7 +185,8 @@ def train(opt):
                     norm_loss = adv_norm[mask.nonzero(
                     )[0]] + norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
                     norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                        (mask.nonzero()[0].shape[0] + mask.nonzero()
+                         [1].shape[0] + mask.nonzero()[2].shape[0])
 
                     # get cross-entropy loss (only considering adv anchor examples)
                     anchor_predictions = predictions[np.unique(
@@ -209,7 +211,7 @@ def train(opt):
                     predictions = adv_anchor_predictions
                     labels = anchor_labels
 
-                # clean train mode prediction
+                # clean train mode
                 else:
                     # get feature embedding from resnet
                     features, predictions = model(images, labels)
@@ -223,7 +225,8 @@ def train(opt):
                     norm_loss = norm[mask.nonzero()[0]] + \
                         norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
                     norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                        (mask.nonzero()[0].shape[0] + mask.nonzero()
+                         [1].shape[0] + mask.nonzero()[2].shape[0])
 
                     # get cross-entropy loss (only considering anchor examples)
                     anchor_predictions = predictions[np.unique(

@@ -135,7 +135,7 @@ def train(opt):
                 else:
                     pass
 
-                 # at train mode prediction
+                 # at train mode
                 if opt.train_mode == "at":
                     # get feature embedding from resnet
                     features, _ = model(images, labels)
@@ -148,10 +148,8 @@ def train(opt):
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = adv_norm[mask.nonzero()[0]] + \
-                        norm[mask.nonzero()[1]]
-                    norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                    norm_loss = (adv_norm[mask.nonzero()[0]].sum() + norm[mask.nonzero()[1]].sum()) / (
+                        mask.nonzero()[0].shape[0] + mask.nonzero()[1].shape[0])
 
                     # get cross-entropy loss
                     adv_anchor_predictions = adv_predictions[np.unique(
@@ -167,7 +165,7 @@ def train(opt):
                     # for result accumulation
                     predictions = adv_anchor_predictions
 
-                # alp train mode prediction
+                # alp train mode
                 elif opt.train_mode == "alp":
                    # get feature embedding from resnet
                     features, predictions = model(images, labels)
@@ -180,10 +178,8 @@ def train(opt):
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = adv_norm[mask.nonzero()[0]] + \
-                        norm[mask.nonzero()[1]]
-                    norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                    norm_loss = (adv_norm[mask.nonzero()[0]].sum() + norm[mask.nonzero()[1]].sum()) / (
+                        mask.nonzero()[0].shape[0] + mask.nonzero()[1].shape[0])
 
                     # get cross-entropy loss
                     anchor_predictions = predictions[np.unique(
@@ -207,18 +203,19 @@ def train(opt):
                     # for result accumulation
                     predictions = adv_anchor_predictions
 
-                # clean train mode prediction
+                # clean train mode
                 else:
                     # get feature embedding and logits from resnet
                     features, predictions = model(images, labels)
 
                     # get contrastive loss
-                    cnt_loss, _ = batch_all_contrastive_loss(
+                    cnt_loss, mask = batch_all_contrastive_loss(
                         labels, features, margin)
 
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
-                    norm_loss = torch.sum(norm) / features.size(0)
+                    norm_loss = (norm[mask.nonzero()[0]].sum() + norm[mask.nonzero()[1]].sum()) / (
+                        mask.nonzero()[0].shape[0] + mask.nonzero()[1].shape[0])
 
                     # get cross-entropy loss
                     ce_loss = criterion(predictions, labels)

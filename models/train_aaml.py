@@ -133,7 +133,7 @@ def train(opt):
                 else:
                     pass
 
-                # at train mode prediction
+                # at train mode
                 if opt.train_mode == "at":
                     # logits for adversarial images
                     features, predictions = model(images, labels)
@@ -142,9 +142,8 @@ def train(opt):
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = torch.sum(norm) / features.size(0)
-                    norm_loss = norm_loss + \
-                        (torch.sum(adv_norm) / adv_features.size(0))
+                    norm_loss = (torch.sum(norm) + torch.sum(adv_norm)) / \
+                        (features.size(0) + adv_features.size(0))
 
                     # get aaml cross-entropy loss
                     ce_loss = criterion(predictions, labels)
@@ -157,7 +156,7 @@ def train(opt):
                     # for result accumulation
                     predictions = adv_predictions
 
-                # alp train mode prediction
+                # alp train mode
                 elif opt.train_mode == "alp":
                     # logits for adversarial images
                     features, predictions = model(images, labels)
@@ -166,9 +165,8 @@ def train(opt):
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = torch.sum(norm) / features.size(0)
-                    norm_loss = norm_loss + \
-                        (torch.sum(adv_norm) / adv_features.size(0))
+                    norm_loss = (torch.sum(norm) + torch.sum(adv_norm)) / \
+                        (features.size(0) + adv_features.size(0))
 
                     # get aaml cross-entropy loss
                     ce_loss = criterion(predictions, labels)
@@ -186,7 +184,7 @@ def train(opt):
                     # for result accumulation
                     predictions = adv_predictions
 
-                # clean train mode prediction
+                # clean train mode
                 else:
                     # logits for clean images
                     features, predictions = model(images, labels)

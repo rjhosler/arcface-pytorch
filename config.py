@@ -7,7 +7,7 @@ class Config(object):
     test_restarts = 1  # 1 (for all but 20PGD20), 20
     test_bb = False  # True, False, test using black box attack
 
-    metric = "triplet"  # softmax, contrastive, triplet, center, aaml
+    metric = "contrastive"  # softmax, contrastive, triplet, center, aaml
 
     # arcface margin and scale hyperparameters
     m = 0.15
