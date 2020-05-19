@@ -2,17 +2,25 @@ import os
 import torch
 
 
-def save_model(model, dataset, mode, metric, backbone):
+def save_model(model, dataset, metric, mode, backbone):
     # save trained model to cehckpoints directory
-    save_path = os.path.join(os.path.abspath(
-        ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, mode, metric, backbone))
+    if metric == "bb":
+        save_path = os.path.join(os.path.abspath(
+            ""), "checkpoints", "{}_{}_{}.pth".format(dataset, metric, backbone))
+    else:
+        save_path = os.path.join(os.path.abspath(
+            ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, metric, mode, backbone))
     torch.save(model, save_path)
     return
 
 
-def load_model(dataset, mode, metric, backbone):
+def load_model(dataset, metric, mode, backbone):
     # load trained model from checkpoints directory
-    load_path = os.path.join(os.path.abspath(
-        ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, mode, metric, backbone))
+    if metric == "bb":
+        load_path = os.path.join(os.path.abspath(
+            ""), "checkpoints", "{}_{}_{}.pth".format(dataset, metric, backbone))
+    else:
+        load_path = os.path.join(os.path.abspath(
+            ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, mode, metric, backbone))
     model = torch.load(load_path).eval()
     return model

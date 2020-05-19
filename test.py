@@ -7,7 +7,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import load_model
-from models.attacks import fgsm, bim, pgd, mim, cw
+from models.attacks import fgsm, bim, cw, pgd, mim
 
 
 np.random.seed(42)
@@ -40,22 +40,22 @@ def test(opt):
                              num_workers=opt.num_workers,
                              shuffle=False)
 
+    print("Dataset -- {}, Metric -- {}, Test Mode -- {}, Backbone -- {}".format(opt.dataset,
+                                                                        opt.metric, opt.test_mode, opt.backbone))
     print("Test iteration batch size: {}".format(opt.batch_size))
     print("Test iterations per epoch: {}".format(len(test_loader)))
 
-    model = load_model(opt.dataset, opt.train_mode, opt.metric, opt.backbone)
+    model = load_model(opt.dataset, opt.metric, opt.train_mode, opt.backbone)
     model.to(device)
-    model = DataParallel(model)
+    if opt.use_gpu:
+        model = DataParallel(model).to(device)
 
     # load balck box model for black box attacks
     if opt.test_bb:
-        model_bb = load_model(opt.dataset + "_bb", opt.train_mode,
-                              opt.metric, opt.backbone)
+        model_bb = load_model(opt.dataset, "bb", "", opt.backbone)
         model_bb.to(device)
-        model_bb = DataParallel(model_bb)
-
-    # set model used to generate adversarial attacks
-    if opt.test_bb:
+        if opt.use_gpu:
+            model_bb = DataParallel(model_bb).to(device)
         attack_model = model_bb
     else:
         attack_model = model
@@ -81,6 +81,9 @@ def test(opt):
             elif opt.test_mode == "bim":
                 images = bim(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
+            elif opt.test_mode == "cw":
+                images = cw(attack_model, images, labels,
+                            1, 0.15, 100, 0.001, ii)
             elif opt.test_mode == "pgd_7":
                 images = pgd(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
@@ -90,9 +93,6 @@ def test(opt):
             elif opt.test_mode == "mim":
                 images = mim(
                     attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40)
-            elif opt.test_mode == "cw":
-                images = cw(attack_model, images, labels,
-                            1, 0.15, 100, 0.001, ii)
             else:
                 pass
 

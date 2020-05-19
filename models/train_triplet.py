@@ -1,18 +1,17 @@
+import time
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss, DataParallel
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
-from config import Config
 from models.utils import save_model, load_model
-from models.metrics import Softmax, AAML, LMCL, AMSL
-from models.attacks import fgsm, bim, pgd, mim, cw
+from models.metrics import Softmax, batch_all_triplet_loss
+from models.attacks import pgd
 from models.resnet_cifar import resnet18, resnet34
-from models.triplet_loss import batch_all_triplet_loss
 
 
 np.random.seed(42)
@@ -21,7 +20,7 @@ torch.manual_seed(42)
 
 def train(opt):
     # set device to cpu/gpu
-    if opt.use_gpu == True:
+    if opt.use_gpu:
         device = torch.device("cuda", opt.gpu_id)
     else:
         device = torch.device("cpu")
@@ -77,6 +76,8 @@ def train(opt):
 
     data_loaders = {"train": train_loader, "val": val_loader}
 
+    print("Dataset -- {}, Metric -- {}, Train Mode -- {}, Backbone -- {}".format(opt.dataset,
+                                                                        opt.metric, opt.train_mode, opt.backbone))
     print("Train iteration batch size: {}".format(opt.batch_size))
     print("Train iterations per epoch: {}".format(len(train_loader)))
 
@@ -90,29 +91,23 @@ def train(opt):
     model.fc = Softmax(model.fc.in_features, num_classes)
 
     model.to(device)
+    if opt.use_gpu:
+        model = DataParallel(model).to(device)
 
-    # set optimizer
     criterion = CrossEntropyLoss()
     mse_criterion = MSELoss()
 
-    # set LR scheduler
+    # set optimizer and LR scheduler
+    if opt.optimizer == "sgd":
+        optimizer = SGD([{"params": model.parameters()}],
+                        lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
+    else:
+        optimizer = Adam([{"params": model.parameters()}],
+                            lr=opt.lr, weight_decay=opt.weight_decay)
     if opt.scheduler == "decay":
-        if opt.optimizer == "sgd":
-            optimizer = SGD([{"params": model.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
-        else:
-            optimizer = Adam([{"params": model.parameters()}],
-                             lr=opt.lr, weight_decay=opt.weight_decay)
         scheduler = lr_scheduler.StepLR(
             optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
-
     else:
-        if opt.optimizer == "sgd":
-            optimizer = SGD([{"params": model.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
-        else:
-            optimizer = Adam([{"params": model.parameters()}],
-                             lr=opt.lr, weight_decay=opt.weight_decay)
         scheduler = lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.1, patience=10)
 
@@ -126,6 +121,7 @@ def train(opt):
             else:
                 model.eval()
 
+            start_time = time.time()
             for ii, data in enumerate(data_loaders[phase]):
                 # load data batch to device
                 images, labels = data
@@ -141,9 +137,9 @@ def train(opt):
 
                  # at train mode prediction
                 if opt.train_mode == "at":
-                    # get feature embedding from resnet and prediction
-                    features = model.feature(images)
-                    adv_features = model.feature(adv_images)
+                    # get feature embedding from resnet
+                    features, _ = model(images, labels)
+                    adv_features, _ = model(adv_images, labels)
 
                     # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
                     tpl_loss, _, mask = batch_all_triplet_loss(
@@ -161,7 +157,7 @@ def train(opt):
                     adv_anchor_images = adv_images[np.unique(
                         mask.nonzero()[0])]
                     anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    adv_predictions = model(adv_anchor_images, anchor_labels)
+                    _, adv_predictions = model(adv_anchor_images, anchor_labels)
                     ce_loss = criterion(adv_predictions, anchor_labels)
 
                     # combine cross-entropy loss, triplet loss and feature norm loss using lambda weights
@@ -175,9 +171,9 @@ def train(opt):
 
                 # alp train mode prediction
                 elif opt.train_mode == "alp":
-                    # get feature embedding from resnet and prediction
-                    features = model.feature(images)
-                    adv_features = model.feature(adv_images)
+                    # get feature embedding from resnet
+                    features, _ = model(images, labels)
+                    adv_features, _ = model(adv_images, labels)
 
                     # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
                     tpl_loss, _, mask = batch_all_triplet_loss(
@@ -197,8 +193,8 @@ def train(opt):
                     anchor_images = images[np.unique(
                         mask.nonzero()[0])]
                     anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    predictions = model(anchor_images, anchor_labels)
-                    adv_predictions = model(adv_anchor_images, anchor_labels)
+                    _, predictions = model(anchor_images, anchor_labels)
+                    _, adv_predictions = model(adv_anchor_images, anchor_labels)
                     ce_loss = criterion(adv_predictions, anchor_labels)
 
                     # get alp loss
@@ -217,8 +213,8 @@ def train(opt):
 
                 # clean train mode prediction
                 else:
-                    # get feature embedding from resnet and prediction
-                    features = model.feature(images)
+                    # get feature embedding from resnet
+                    features, _ = model(images, labels)
 
                     # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
                     tpl_loss, _, mask = batch_all_triplet_loss(
@@ -234,7 +230,7 @@ def train(opt):
                     # get cross-entropy loss (only considering anchor examples)
                     anchor_images = images[np.unique(mask.nonzero()[0])]
                     anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    predictions = model(anchor_images, anchor_labels)
+                    _, predictions = model(anchor_images, anchor_labels)
                     ce_loss = criterion(predictions, anchor_labels)
 
                     # combine cross-entropy loss, triplet loss and feature norm loss using lambda weights
@@ -258,10 +254,11 @@ def train(opt):
 
                 # print accumulated train/val results at end of epoch
                 if ii == len(data_loaders[phase]) - 1:
+                    end_time = time.time()
                     acc = total_correct / total_examples
                     loss = total_loss / len(data_loaders[phase])
-                    print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Lr -- {:.4f}".format(
-                        phase, epoch, loss, acc, optimizer.param_groups[0]['lr']))
+                    print("{}: Epoch -- {} Loss -- {:.6f} Acc -- {:.6f} Time -- {:.6f}sec".format(
+                        phase, epoch, loss, acc, end_time - start_time))
 
                     if phase == "train":
                         loss = total_loss / len(data_loaders[phase])
@@ -270,9 +267,4 @@ def train(opt):
                         print("")
 
     # save model after training for opt.epoch
-    if opt.test_bb:
-        save_model(model, opt.dataset + "_bb", opt.train_mode,
-                   opt.metric, opt.backbone)
-    else:
-        save_model(model, opt.dataset, opt.train_mode,
-                   opt.metric, opt.backbone)
+    save_model(model, opt.dataset, opt.metric, opt.train_mode, opt.backbone)

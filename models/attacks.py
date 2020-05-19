@@ -13,7 +13,7 @@ def fgsm(model, images, labels, eps):
 
     images.requires_grad = True
 
-    outputs = model(images, labels)
+    _, outputs = model(images, labels)
 
     cost = loss(outputs, labels)
     model.zero_grad()
@@ -32,7 +32,7 @@ def bim(model, images, labels, eps, alpha, iters):
     for i in range(iters):
         images.requires_grad = True
 
-        outputs = model(images, labels)
+        _, outputs = model(images, labels)
 
         cost = loss(outputs, labels)
         model.zero_grad()
@@ -60,7 +60,7 @@ def mim(model, images, labels, eps, alpha, momemtum, iters):
     for i in range(iters):
         images.requires_grad = True
 
-        outputs = model(images, labels)
+        _, outputs = model(images, labels)
 
         cost = loss(outputs, labels)
         model.zero_grad()
@@ -94,7 +94,7 @@ def pgd(model, images, labels, eps, alpha, iters):
     for i in range(iters):
         images.requires_grad = True
 
-        outputs = model(images, labels)
+        _, outputs = model(images, labels)
 
         cost = loss(outputs, labels)
         model.zero_grad()
@@ -111,7 +111,7 @@ def pgd(model, images, labels, eps, alpha, iters):
 def cw(model, images, labels, c, kappa, max_iter, learning_rate, ii):
     # Define f-function
     def f(x):
-        outputs = model(x, labels)
+        _, outputs = model(x, labels)
         one_hot_labels = torch.eye(len(outputs[0]))[labels].to(images.device)
 
         i, _ = torch.max((1-one_hot_labels)*outputs, dim=1)
