@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from config import Config
+from models.train_aaml import train as aaml_train
 from models.train_center import train as center_train
 from models.train_triplet import train as triplet_train
 from models.train_softmax import train as softmax_train
@@ -33,7 +34,13 @@ if __name__ == "__main__":
         torch.manual_seed(42)
         center_train(opt)
 
-    # perform softmax/arcface loss training
+    # perform aaml loss training
+    elif opt.metric == "aaml":
+        np.random.seed(42)
+        torch.manual_seed(42)
+        aaml_train(opt)
+
+    # perform softmax loss training
     else:
         opt.test_bb = False
         np.random.seed(42)

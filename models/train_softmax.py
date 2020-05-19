@@ -9,7 +9,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from models.utils import save_model, load_model
-from models.metrics import Softmax, AAML
+from models.metrics import Softmax
 from models.attacks import pgd
 from models.resnet_cifar import resnet18, resnet34
 
@@ -83,12 +83,7 @@ def train(opt):
     else:
         model = resnet34(pretrained=False)
 
-    # set metric loss function
-    if opt.metric == "aaml":
-        model.fc = AAML(
-            model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
-    else:
-        model.fc = Softmax(model.fc.in_features, num_classes)
+    model.fc = Softmax(model.fc.in_features, num_classes)
 
     model.to(device)
     if opt.use_gpu:
@@ -97,7 +92,6 @@ def train(opt):
     criterion = CrossEntropyLoss()
     mse_criterion = MSELoss()
 
-    # set optimizer and LR scheduler
     # set optimizer and LR scheduler
     if opt.optimizer == "sgd":
         optimizer = SGD([{"params": model.parameters()}],

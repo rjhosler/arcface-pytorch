@@ -138,25 +138,26 @@ def train(opt):
                  # at train mode prediction
                 if opt.train_mode == "at":
                     # get feature embedding from resnet
-                    features, predictions = model(images, labels)
+                    features, _ = model(images, labels)
                     adv_features, adv_predictions = model(adv_images, labels)
 
                     # get contrastive loss
-                    cnt_loss = batch_all_contrastive_loss(
-                        labels, features, margin)
-                    cnt_loss = cnt_loss + batch_all_contrastive_loss(
-                        labels, adv_features, margin)
+                    cnt_loss, mask = batch_all_contrastive_loss(
+                        labels, features, margin, adv_embeddings=adv_features)
 
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = torch.sum(norm) / features.size(0)
-                    norm_loss = norm_loss + \
-                        (torch.sum(adv_norm) / adv_features.size(0))
+                    norm_loss = adv_norm[mask.nonzero()[0]] + \
+                        norm[mask.nonzero()[1]]
+                    norm_loss = torch.sum(norm_loss) / \
+                        mask.nonzero()[0].shape[0]
 
                     # get cross-entropy loss
-                    ce_loss = criterion(predictions, labels)
-                    ce_loss = ce_loss + criterion(adv_predictions, labels)
+                    adv_anchor_predictions = adv_predictions[np.unique(
+                        mask.nonzero()[0])]
+                    anchor_labels = labels[np.unique(mask.nonzero()[0])]
+                    ce_loss = criterion(adv_anchor_predictions, anchor_labels)
 
                     # combine cross-entropy loss, contrastive loss and feature norm loss using lambda weights
                     loss = ce_loss + lambda_loss[0] * \
@@ -164,33 +165,37 @@ def train(opt):
                     optimizer.zero_grad()
 
                     # for result accumulation
-                    predictions = adv_predictions
+                    predictions = adv_anchor_predictions
 
                 # alp train mode prediction
                 elif opt.train_mode == "alp":
-                    # get feature embedding from resnet
+                   # get feature embedding from resnet
                     features, predictions = model(images, labels)
                     adv_features, adv_predictions = model(adv_images, labels)
 
                     # get contrastive loss
-                    cnt_loss = batch_all_contrastive_loss(
-                        labels, features, margin)
-                    cnt_loss = cnt_loss + batch_all_contrastive_loss(
-                        labels, adv_features, margin)
+                    cnt_loss, mask = batch_all_contrastive_loss(
+                        labels, features, margin, adv_embeddings=adv_features)
 
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = torch.sum(norm) / features.size(0)
-                    norm_loss = norm_loss + \
-                        (torch.sum(adv_norm) / adv_features.size(0))
+                    norm_loss = adv_norm[mask.nonzero()[0]] + \
+                        norm[mask.nonzero()[1]]
+                    norm_loss = torch.sum(norm_loss) / \
+                        mask.nonzero()[0].shape[0]
 
                     # get cross-entropy loss
-                    ce_loss = criterion(predictions, labels)
-                    ce_loss = ce_loss + criterion(adv_predictions, labels)
+                    anchor_predictions = predictions[np.unique(
+                        mask.nonzero()[0])]
+                    adv_anchor_predictions = adv_predictions[np.unique(
+                        mask.nonzero()[0])]
+                    anchor_labels = labels[np.unique(mask.nonzero()[0])]
+                    ce_loss = criterion(adv_anchor_predictions, anchor_labels)
 
                     # get alp loss
-                    alp_loss = mse_criterion(adv_predictions, predictions)
+                    alp_loss = mse_criterion(
+                        adv_anchor_predictions, anchor_predictions)
 
                     # combine cross-entropy loss, contrastive loss and feature norm loss using lambda weights
                     loss = ce_loss + lambda_loss[0] * \
@@ -200,7 +205,7 @@ def train(opt):
                     optimizer.zero_grad()
 
                     # for result accumulation
-                    predictions = adv_predictions
+                    predictions = adv_anchor_predictions
 
                 # clean train mode prediction
                 else:
@@ -208,7 +213,7 @@ def train(opt):
                     features, predictions = model(images, labels)
 
                     # get contrastive loss
-                    cnt_loss = batch_all_contrastive_loss(
+                    cnt_loss, _ = batch_all_contrastive_loss(
                         labels, features, margin)
 
                     # get feature norm loss

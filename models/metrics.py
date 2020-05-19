@@ -228,7 +228,14 @@ def batch_all_contrastive_loss(labels, embeddings, margin, squared=False, adv_em
         embeddings, squared=squared, adv_embeddings=adv_embeddings)
 
     pos_mask = get_valid_positive_mask(labels)
+
     neg_mask = get_valid_negative_mask(labels)
+    neg_mask = (margin * neg_mask.float()) - \
+        (distances * neg_mask.float())
+    neg_mask.clamp_(min=0)
+    neg_mask = neg_mask > 0
+
+    mask = pos_mask | neg_mask
 
     epsilon = 1e-16
 
@@ -236,11 +243,12 @@ def batch_all_contrastive_loss(labels, embeddings, margin, squared=False, adv_em
     pos_cnt = torch.sum(pos_distances > 0)
     pos_loss = pos_distances.sum() / (pos_cnt + epsilon)
 
-    neg_distances = (margin * neg_mask.float()) - (distances * neg_mask.float())
+    neg_distances = (margin * neg_mask.float()) - \
+        (distances * neg_mask.float())
     neg_distances.clamp_(min=0)
-    neg_cnt = torch.sum(neg_distances > 0)
+    neg_cnt = torch.sum(neg_mask > 0)
     neg_loss = neg_distances.sum() / (neg_cnt + epsilon)
 
     contrastive_loss = pos_loss + neg_loss
     
-    return contrastive_loss
+    return contrastive_loss, mask.cpu().numpy()

@@ -9,7 +9,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from models.utils import save_model, load_model
-from models.metrics import Softmax, batch_all_triplet_loss
+from models.metrics import AAML
 from models.attacks import pgd
 from models.resnet_cifar import resnet18, resnet34
 
@@ -39,16 +39,14 @@ def train(opt):
     # get CIFAR10/CIFAR100 train/val set
     if opt.dataset == "CIFAR10":
         alp_lambda = 0.5
-        margin = 0.03
-        lambda_loss = [2, 0.001]
+        lambda_loss = 0.001
         train_set = CIFAR10(root="./data", train=True,
                             download=True, transform=transform_train)
         val_set = CIFAR10(root="./data", train=True,
                           download=True, transform=transform_val)
     else:
         alp_lambda = 0.5
-        margin = 0.03
-        lambda_loss = [2, 0.001]
+        lambda_loss = 0.001
         train_set = CIFAR100(root="./data", train=True,
                              download=True, transform=transform_train)
         val_set = CIFAR100(root="./data", train=True,
@@ -77,7 +75,7 @@ def train(opt):
     data_loaders = {"train": train_loader, "val": val_loader}
 
     print("Dataset -- {}, Metric -- {}, Train Mode -- {}, Backbone -- {}".format(opt.dataset,
-                                                                        opt.metric, opt.train_mode, opt.backbone))
+                                                                                 opt.metric, opt.train_mode, opt.backbone))
     print("Train iteration batch size: {}".format(opt.batch_size))
     print("Train iterations per epoch: {}".format(len(train_loader)))
 
@@ -87,8 +85,8 @@ def train(opt):
     else:
         model = resnet34(pretrained=False)
 
-    # set metric loss function
-    model.fc = Softmax(model.fc.in_features, num_classes)
+    model.fc = AAML(
+        model.fc.in_features, num_classes, device, s=opt.s, m=opt.m)
 
     model.to(device)
     if opt.use_gpu:
@@ -103,7 +101,7 @@ def train(opt):
                         lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
     else:
         optimizer = Adam([{"params": model.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay)
+                         lr=opt.lr, weight_decay=opt.weight_decay)
     if opt.scheduler == "decay":
         scheduler = lr_scheduler.StepLR(
             optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
@@ -135,110 +133,74 @@ def train(opt):
                 else:
                     pass
 
-                 # at train mode prediction
+                # at train mode prediction
                 if opt.train_mode == "at":
-                    # get feature embedding from resnet
-                    features, _ = model(images, labels)
-                    adv_features, adv_predictions = model(adv_images, labels)
-
-                    # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
-                    tpl_loss, _, mask = batch_all_triplet_loss(
-                        labels, features, margin, adv_embeddings=adv_features)
-
-                    # get adv anchor and clean pos/neg feature norm loss
-                    norm = features.mm(features.t()).diag()
-                    adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = adv_norm[mask.nonzero(
-                    )[0]] + norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
-                    norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
-
-                    # get cross-entropy loss (only adv considering anchor examples)
-                    adv_anchor_predictions = adv_predictions[np.unique(
-                        mask.nonzero()[0])]
-                    anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    ce_loss = criterion(adv_anchor_predictions, anchor_labels)
-
-                    # combine cross-entropy loss, triplet loss and feature norm loss using lambda weights
-                    loss = ce_loss + lambda_loss[0] * \
-                        tpl_loss + lambda_loss[1] * norm_loss
-                    optimizer.zero_grad()
-
-                    # for result accumulation
-                    predictions = adv_anchor_predictions
-                    labels = anchor_labels
-
-                # alp train mode prediction
-                elif opt.train_mode == "alp":
-                    # get feature embedding from resnet
+                    # logits for adversarial images
                     features, predictions = model(images, labels)
                     adv_features, adv_predictions = model(adv_images, labels)
 
-                    # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
-                    tpl_loss, _, mask = batch_all_triplet_loss(
-                        labels, features, margin, adv_embeddings=adv_features)
-
-                    # get adv anchor and clean pos/neg feature norm loss
+                    # get feature norm loss
                     norm = features.mm(features.t()).diag()
                     adv_norm = adv_features.mm(adv_features.t()).diag()
-                    norm_loss = adv_norm[mask.nonzero(
-                    )[0]] + norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
-                    norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                    norm_loss = torch.sum(norm) / features.size(0)
+                    norm_loss = norm_loss + \
+                        (torch.sum(adv_norm) / adv_features.size(0))
 
-                    # get cross-entropy loss (only considering adv anchor examples)
-                    anchor_predictions = predictions[np.unique(
-                        mask.nonzero()[0])]
-                    adv_anchor_predictions = adv_predictions[np.unique(
-                        mask.nonzero()[0])]
-                    anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    ce_loss = criterion(adv_anchor_predictions, anchor_labels)
+                    # get aaml cross-entropy loss
+                    ce_loss = criterion(predictions, labels)
+                    ce_loss = ce_loss + criterion(adv_predictions, labels)
+
+                    # combine aaml cross-entropy loss with norm loss using lambda weight
+                    loss = ce_loss + lambda_loss * norm_loss
+                    optimizer.zero_grad()
+
+                    # for result accumulation
+                    predictions = adv_predictions
+
+                # alp train mode prediction
+                elif opt.train_mode == "alp":
+                    # logits for adversarial images
+                    features, predictions = model(images, labels)
+                    adv_features, adv_predictions = model(adv_images, labels)
+
+                    # get feature norm loss
+                    norm = features.mm(features.t()).diag()
+                    adv_norm = adv_features.mm(adv_features.t()).diag()
+                    norm_loss = torch.sum(norm) / features.size(0)
+                    norm_loss = norm_loss + \
+                        (torch.sum(adv_norm) / adv_features.size(0))
+
+                    # get aaml cross-entropy loss
+                    ce_loss = criterion(predictions, labels)
+                    ce_loss = ce_loss + criterion(adv_predictions, labels)
 
                     # get alp loss
-                    alp_loss = mse_criterion(
-                        adv_anchor_predictions, anchor_predictions)
+                    alp_loss = mse_criterion(adv_predictions, predictions)
 
-                    # combine cross-entropy loss, triplet loss and feature norm loss using lambda weights
-                    loss = ce_loss + lambda_loss[0] * \
-                        tpl_loss + lambda_loss[1] * norm_loss
+                    # combine aaml cross-entropy loss with norm loss using lambda weight
+                    loss = ce_loss + lambda_loss * norm_loss
                     # combine loss with alp loss
                     loss = loss + alp_lambda * alp_loss
                     optimizer.zero_grad()
 
                     # for result accumulation
-                    predictions = adv_anchor_predictions
-                    labels = anchor_labels
+                    predictions = adv_predictions
 
                 # clean train mode prediction
                 else:
-                    # get feature embedding from resnet
+                    # logits for clean images
                     features, predictions = model(images, labels)
-
-                    # get triplet loss (margin 0.03 CIFAR10/100, 0.01 TinyImageNet from paper)
-                    tpl_loss, _, mask = batch_all_triplet_loss(
-                        labels, features, margin)
 
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
-                    norm_loss = norm[mask.nonzero()[0]] + \
-                        norm[mask.nonzero()[1]] + norm[mask.nonzero()[2]]
-                    norm_loss = torch.sum(norm_loss) / \
-                        mask.nonzero()[0].shape[0]
+                    norm_loss = torch.sum(norm) / features.size(0)
 
-                    # get cross-entropy loss (only considering anchor examples)
-                    anchor_predictions = predictions[np.unique(
-                        mask.nonzero()[0])]
-                    anchor_labels = labels[np.unique(mask.nonzero()[0])]
-                    ce_loss = criterion(anchor_predictions, anchor_labels)
+                    # get aaml cross-entropy loss
+                    ce_loss = criterion(predictions, labels)
 
-                    # combine cross-entropy loss, triplet loss and feature norm loss using lambda weights
-                    loss = ce_loss + lambda_loss[0] * \
-                        tpl_loss + lambda_loss[1] * norm_loss
+                    # combine aaml cross-entropy loss with norm loss using lambda weight
+                    loss = ce_loss + lambda_loss * norm_loss
                     optimizer.zero_grad()
-
-                    # for result accumulation
-                    predictions = anchor_predictions
-                    labels = anchor_labels
 
                 # only take step if in train phase
                 if phase == "train":
@@ -266,4 +228,8 @@ def train(opt):
                         print("")
 
     # save model after training for opt.epoch
-    save_model(model, opt.dataset, opt.metric, opt.train_mode, opt.backbone)
+    if opt.test_bb:
+        save_model(model, opt.dataset, "bb", "", opt.backbone)
+    else:
+        save_model(model, opt.dataset, opt.metric,
+                   opt.train_mode, opt.backbone)
