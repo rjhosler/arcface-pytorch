@@ -21,6 +21,6 @@ def load_model(dataset, metric, mode, backbone):
             ""), "checkpoints", "{}_{}_{}.pth".format(dataset, metric, backbone))
     else:
         load_path = os.path.join(os.path.abspath(
-            ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, mode, metric, backbone))
+            ""), "checkpoints", "{}_{}_{}_{}.pth".format(dataset, metric, mode, backbone))
     model = torch.load(load_path).eval()
     return model

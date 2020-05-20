@@ -97,7 +97,7 @@ def test(opt):
                 pass
 
             # get feature embedding from resnet and prediction
-            predictions_i = model(images, labels)
+            _, predictions_i = model(images, labels)
 
             # accumulate test results
             predictions_i = torch.argmax(predictions_i, 1).cpu().numpy()
