@@ -40,8 +40,8 @@ def test(opt):
                              num_workers=opt.num_workers,
                              shuffle=False)
 
-    print("Dataset -- {}, Metric -- {}, Test Mode -- {}, Backbone -- {}".format(opt.dataset,
-                                                                        opt.metric, opt.test_mode, opt.backbone))
+    print("Dataset -- {}, Metric -- {}, Train Mode -- {}, Test Mode -- {}, Blackbox -- {}, Backbone -- {}".format(opt.dataset,
+                                                                                                                  opt.metric, opt.train_mode, opt.test_mode, opt.test_bb, opt.backbone))
     print("Test iteration batch size: {}".format(opt.batch_size))
     print("Test iterations per epoch: {}".format(len(test_loader)))
 
