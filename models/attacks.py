@@ -78,7 +78,7 @@ def mim(model, images, labels, eps, alpha, momemtum, iters):
         else:
             grad = momemtum * grad_prev + \
                 images.grad.data / images.grad.data.norm(p=1)
-        
+
         adv_images = images + alpha * grad.sign()
 
         zeros = torch.zeros_like(images).to(images.device)

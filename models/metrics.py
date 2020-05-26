@@ -1,10 +1,10 @@
 from __future__ import print_function
 from __future__ import division
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter, Linear
-import math
 
 
 class Softmax(nn.Module):
@@ -250,5 +250,5 @@ def batch_all_contrastive_loss(labels, embeddings, margin, squared=False, adv_em
     neg_loss = neg_distances.sum() / (neg_cnt + epsilon)
 
     contrastive_loss = pos_loss + neg_loss
-    
+
     return contrastive_loss, mask.cpu().numpy()

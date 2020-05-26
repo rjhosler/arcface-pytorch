@@ -83,7 +83,7 @@ def test(opt):
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
             elif opt.test_mode == "cw":
                 adv_images = cw(attack_model, images, labels,
-                            1, 0.15, 100, 0.001, ii)
+                                1, 0.15, 100, 0.001, ii)
             elif opt.test_mode == "pgd_7":
                 adv_images = pgd(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)

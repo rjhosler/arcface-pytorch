@@ -102,12 +102,12 @@ def train(opt):
         optimizer = SGD([{"params": model.parameters()}],
                         lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
         cent_optimizer = SGD([{"params": cent_criterion.parameters()}],
-                                lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
+                             lr=opt.lr, weight_decay=opt.weight_decay, momentum=0.9)
     else:
         optimizer = Adam([{"params": model.parameters()}],
-                            lr=opt.lr, weight_decay=opt.weight_decay)
+                         lr=opt.lr, weight_decay=opt.weight_decay)
         cent_optimizer = Adam([{"params": cent_criterion.parameters()}],
-                                lr=opt.lr, weight_decay=opt.weight_decay)
+                              lr=opt.lr, weight_decay=opt.weight_decay)
     if opt.scheduler == "decay":
         scheduler = lr_scheduler.StepLR(
             optimizer, step_size=opt.lr_step, gamma=opt.lr_decay)
@@ -147,7 +147,8 @@ def train(opt):
 
                     # get center loss
                     cent_loss = cent_criterion(features, labels)
-                    cent_loss = cent_loss + cent_criterion(adv_features, labels)
+                    cent_loss = cent_loss + \
+                        cent_criterion(adv_features, labels)
 
                     # get feature norm loss
                     norm = features.mm(features.t()).diag()
