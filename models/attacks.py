@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import functools
 
 
 np.random.seed(42)
@@ -29,6 +30,8 @@ def fgsm(model, images, labels, eps):
 def bim(model, images, labels, eps, alpha, iters):
     loss = nn.CrossEntropyLoss()
 
+    input_images = images.data
+
     for i in range(iters):
         images.requires_grad = True
 
@@ -40,12 +43,15 @@ def bim(model, images, labels, eps, alpha, iters):
 
         grad = images.grad.data.sign()
         adv_images = images + alpha * grad
-        a = torch.clamp(images - eps, min=0)
-        b = (adv_images >= a).float() * \
-            adv_images + (a > adv_images).float() * a
-        c = (b > images + eps).float() * (images+eps) + \
-            (images+eps >= b).float() * b
-        images = torch.clamp(c, max=1).detach()
+
+        zeros = torch.zeros_like(images).to(images.device)
+        ones = zeros + 1
+
+        clip_1 = functools.reduce(
+            torch.max, [zeros, input_images - eps, adv_images])
+        clip_2 = functools.reduce(
+            torch.min, [ones, input_images + eps, clip_1])
+        images = torch.clamp(clip_2, 0, 1).detach()
 
     adv_images = images
 
@@ -55,7 +61,8 @@ def bim(model, images, labels, eps, alpha, iters):
 def mim(model, images, labels, eps, alpha, momemtum, iters):
     loss = nn.CrossEntropyLoss()
 
-    grad_prev = torch.zeros_like(images)
+    input_images = images.data
+    grad_prev = torch.zeros_like(images).to(images.device)
 
     for i in range(iters):
         images.requires_grad = True
@@ -67,16 +74,22 @@ def mim(model, images, labels, eps, alpha, momemtum, iters):
         cost.backward()
 
         if i == 0:
-            grad = images.grad.data
+            grad = images.grad.data / images.grad.data.norm(p=1)
         else:
-            grad = momemtum * grad_prev + (1 - momemtum) * images.grad.data
+            grad = momemtum * grad_prev + \
+                images.grad.data / images.grad.data.norm(p=1)
+        
         adv_images = images + alpha * grad.sign()
-        a = torch.clamp(images - eps, min=0)
-        b = (adv_images >= a).float() * \
-            adv_images + (a > adv_images).float() * a
-        c = (b > images + eps).float() * (images+eps) + \
-            (images+eps >= b).float() * b
-        images = torch.clamp(c, max=1).detach()
+
+        zeros = torch.zeros_like(images).to(images.device)
+        ones = zeros + 1
+
+        clip_1 = functools.reduce(
+            torch.max, [zeros, input_images - eps, adv_images])
+        clip_2 = functools.reduce(
+            torch.min, [ones, input_images + eps, clip_1])
+        images = torch.clamp(clip_2, 0, 1).detach()
+
         grad_prev = grad
 
     adv_images = images
@@ -87,7 +100,7 @@ def mim(model, images, labels, eps, alpha, momemtum, iters):
 def pgd(model, images, labels, eps, alpha, iters):
     loss = nn.CrossEntropyLoss()
 
-    ori_images = images.data
+    input_images = images.data
     images = images + \
         torch.FloatTensor(images.shape).uniform_(-eps, eps).to(images.device)
 
@@ -102,10 +115,12 @@ def pgd(model, images, labels, eps, alpha, iters):
 
         grad = images.grad.data.sign()
         adv_images = images + alpha * grad
-        eta = torch.clamp(adv_images - ori_images, min=-eps, max=eps)
-        images = torch.clamp(ori_images + eta, min=0, max=1).detach_()
+        eta = torch.clamp(adv_images - input_images, min=-eps, max=eps)
+        images = torch.clamp(input_images + eta, min=0, max=1).detach_()
 
-    return images
+    adv_images = images
+
+    return adv_images
 
 
 def cw(model, images, labels, c, kappa, max_iter, learning_rate, ii):

@@ -16,7 +16,7 @@ torch.manual_seed(42)
 
 def test(opt):
     # set device to cpu/gpu
-    if opt.use_gpu == True:
+    if opt.use_gpu:
         device = torch.device("cuda", opt.gpu_id)
     else:
         device = torch.device("cpu")
@@ -76,28 +76,28 @@ def test(opt):
 
             # perform adversarial attack update to images
             if opt.test_mode == "fgsm":
-                images = fgsm(
+                adv_images = fgsm(
                     attack_model, images, labels, 8. / 255)
             elif opt.test_mode == "bim":
-                images = bim(
+                adv_images = bim(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
             elif opt.test_mode == "cw":
-                images = cw(attack_model, images, labels,
+                adv_images = cw(attack_model, images, labels,
                             1, 0.15, 100, 0.001, ii)
             elif opt.test_mode == "pgd_7":
-                images = pgd(
+                adv_images = pgd(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
             elif opt.test_mode == "pgd_20":
-                images = pgd(
+                adv_images = pgd(
                     attack_model, images, labels, 8. / 255, 2. / 255, 20)
             elif opt.test_mode == "mim":
-                images = mim(
+                adv_images = mim(
                     attack_model, images, labels, 8. / 255, 2. / 255, 0.9, 40)
             else:
-                pass
+                adv_images = images
 
             # get feature embedding from resnet and prediction
-            _, predictions_i = model(images, labels)
+            _, predictions_i = model(adv_images, labels)
 
             # accumulate test results
             predictions_i = torch.argmax(predictions_i, 1).cpu().numpy()
