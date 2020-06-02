@@ -14,7 +14,7 @@ opt.train_mode = "clean"  # clean, at, alp
 opt.dataset = "CIFAR100"  # CIFAR10, CIFAR100, tiny_imagenet
 opt.backbone = "resnet18"  # resnet18, resnet34
 
-for test_mode in ["clean", "fgsm", "bim", "cw", "pgd_7", "pgd_20", "20pgd20", "mim", "bb"]:
+for test_mode in ["clean", "fgsm", "bim", "pgd_7", "pgd_20", "20pgd20", "mim", "bb"]:
     np.random.seed(42)
     torch.manual_seed(42)
 

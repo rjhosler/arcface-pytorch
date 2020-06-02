@@ -172,8 +172,11 @@ def train(opt):
                     ce_loss = criterion(predictions, labels)
                     ce_loss = ce_loss + criterion(adv_predictions, labels)
 
-                    # get alp loss
-                    alp_loss = mse_criterion(adv_predictions, predictions)
+                    # get alp loss (compare adversarial predicitions with non-margin predictions)
+                    model.eval()
+                    _, eval_predictions = model(images, labels)
+                    model.train()
+                    alp_loss = mse_criterion(adv_predictions, eval_predictions)
 
                     # combine aaml cross-entropy loss with norm loss using lambda weight
                     loss = ce_loss + lambda_loss * norm_loss

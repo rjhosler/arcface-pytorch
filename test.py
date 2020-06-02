@@ -7,7 +7,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from config import Config
 from models.utils import load_model
-from models.attacks import fgsm, bim, cw, pgd, mim
+from models.attacks import fgsm, bim, pgd, mim
 
 
 np.random.seed(42)
@@ -81,9 +81,6 @@ def test(opt):
             elif opt.test_mode == "bim":
                 adv_images = bim(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
-            elif opt.test_mode == "cw":
-                adv_images = cw(attack_model, images, labels,
-                                1, 0.15, 100, 0.001, ii)
             elif opt.test_mode == "pgd_7":
                 adv_images = pgd(
                     attack_model, images, labels, 8. / 255, 2. / 255, 7)
