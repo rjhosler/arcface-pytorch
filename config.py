@@ -1,6 +1,6 @@
 class Config(object):
     env = "default"
-    dataset = "CIFAR10"  # CIFAR10, CIFAR100, tiny_imagenet
+    dataset = "CIFAR100"  # CIFAR10, CIFAR100, tiny_imagenet
     backbone = "resnet18"  # resnet18, resnet34
     train_mode = "alp"  # clean, at, alp
     test_mode = "clean"  # clean, fgsm, bim, cw, pgd_7, pgd_20, mim
@@ -11,7 +11,7 @@ class Config(object):
 
     # arcface margin and scale hyperparameters
     m = 0.15
-    s = 4
+    s = [2, 4, 8, 16, 32, 64]
 
     val_split = 0.1
     batch_size = 256
