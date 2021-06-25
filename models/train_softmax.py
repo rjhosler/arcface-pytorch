@@ -107,6 +107,7 @@ def train(opt):
             optimizer, factor=0.1, patience=10)
 
     # train/val loop
+    best_acc = 0
     for epoch in range(opt.epoch):
         for phase in ["train", "val"]:
             total_examples, total_correct, total_loss = 0, 0, 0
@@ -193,11 +194,17 @@ def train(opt):
                         loss = total_loss / len(data_loaders[phase])
                         scheduler.step(loss)
                     else:
+                        if acc > best_acc:
+                                    print("Accuracy improved. Saving model")
+                                    best_acc = acc
+                                    save_model(model, opt.dataset, opt.metric, opt.train_mode, opt.backbone)
                         print("")
 
     # save model after training for opt.epoch
     if opt.test_bb:
         save_model(model, opt.dataset, "bb", "", opt.backbone)
+    '''
     else:
         save_model(model, opt.dataset, opt.metric,
                    opt.train_mode, opt.backbone)
+    '''

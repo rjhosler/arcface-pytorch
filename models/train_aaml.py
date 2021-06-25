@@ -14,8 +14,8 @@ from models.attacks import pgd
 from models.resnet_cifar import resnet18, resnet34
 
 
-np.random.seed(42)
-torch.manual_seed(42)
+np.random.seed(20)
+torch.manual_seed(20)
 
 
 def train(opt):
@@ -57,7 +57,7 @@ def train(opt):
         # set stratified train/val split
         idx = list(range(len(train_set.targets)))
         train_idx, val_idx, _, _ = train_test_split(
-            idx, train_set.targets, test_size=opt.val_split, random_state=42)
+            idx, train_set.targets, test_size=opt.val_split, random_state=20)
 
         # get train/val samplers
         train_sampler = SubsetRandomSampler(train_idx)
@@ -174,11 +174,14 @@ def train(opt):
                         ce_loss = ce_loss + criterion(adv_predictions, labels)
 
                         # get alp loss (compare adversarial predicitions with non-margin predictions)
+                        '''
                         model.eval()
                         _, eval_predictions = model(images, labels)
                         model.train()
                         alp_loss = mse_criterion(adv_predictions, eval_predictions)
-
+                        '''
+                        alp_loss = mse_criterion(adv_predictions, predictions)
+                        
                         # combine aaml cross-entropy loss with norm loss using lambda weight
                         loss = ce_loss + lambda_loss * norm_loss
                         # combine loss with alp loss
@@ -228,11 +231,12 @@ def train(opt):
                             scheduler.step(loss)
                         else:
                             print("")
+                            save_model_aaml(model, opt.dataset, opt.metric, opt.train_mode, opt.backbone, s, opt.m)
                     
 
         # save model after training for opt.epoch
         if opt.test_bb:
-            save_model_aaml(model, opt.dataset, "bb", "", opt.backbone, s)
+            save_model_aaml(model, opt.dataset, "bb", "", opt.backbone, s, opt.m)
         else:
             save_model_aaml(model, opt.dataset, opt.metric,
-                       opt.train_mode, opt.backbone, s)
+                       opt.train_mode, opt.backbone, s, opt.m)
